@@ -14,6 +14,10 @@ Translate ordinary web pages. Turn every YouTube video into a resource for deep 
 
 LingoLens is a bring-your-own-key project installed locally from this generated folder or its ZIP package. It is not available through the Chrome Web Store, does not include API credits, and does not run a developer-operated server.
 
+## Project origin
+
+LingoLens is an independently maintained improvement based on [YouTube Digest](https://github.com/zarazhangrui/youtube-digest) by zarazhangrui, which is released under the MIT License. It preserves the original YouTube learning workflow and adds on-page selection translation, full-page bilingual translation, live bilingual subtitles with Deepgram fallback, shared DeepSeek Flash/Pro model settings, and related interface and reliability improvements. LingoLens is not an official release of the upstream project.
+
 ## Install with your coding agent
 
 You do not need to understand the code or use the command line. Send this message to your coding agent:
