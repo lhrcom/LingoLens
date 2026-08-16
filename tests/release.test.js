@@ -85,7 +85,7 @@ test("release copy documents current scope without em dashes", () => {
   );
   assert.match(
     readme,
-    /Moving or deleting the source folder breaks the unpacked extension until you load it again from the new location\./,
+    /https:\/\/github\.com\/lhrcom\/LingoLens\/releases/,
   );
   assert.match(
     readme,
@@ -93,8 +93,11 @@ test("release copy documents current scope without em dashes", () => {
   );
   assert.match(
     readme,
-    /Select the exact project folder you chose, which must contain `manifest\.json`/,
+    /locate the folder that directly contains `manifest\.json`/,
   );
+  assert.match(readme, /^## Install and start using LingoLens$/m);
+  assert.match(readme, /select English text and click the nearby \*\*译\*\* button/);
+  assert.match(readme, /open a watch page with captions/);
   assert.match(readme, /upstream issues and pull requests are not accepted/i);
   assert.doesNotMatch(readme, /^## Contributing$/m);
   assert.match(chineseReadme, /^# LingoLens$/m);
@@ -110,7 +113,7 @@ test("release copy documents current scope without em dashes", () => {
   );
   assert.match(
     chineseReadme,
-    /如果移动或删除源代码文件夹，Chrome 中加载的扩展会失效，需要从新的位置重新加载。/,
+    /https:\/\/github\.com\/lhrcom\/LingoLens\/releases/,
   );
   assert.match(
     chineseReadme,
@@ -118,8 +121,11 @@ test("release copy documents current scope without em dashes", () => {
   );
   assert.match(
     chineseReadme,
-    /选择你刚才确定的那个准确项目文件夹，其中必须包含 `manifest\.json`/,
+    /找到直接包含 `manifest\.json` 的那一层/,
   );
+  assert.match(chineseReadme, /^## 安装并开始使用 LingoLens$/m);
+  assert.match(chineseReadme, /选中英文并点击选区附近的 \*\*译\*\* 按钮/);
+  assert.match(chineseReadme, /打开带字幕的视频页面和 LingoLens 侧边栏/);
   assert.match(chineseReadme, /不接受上游 Issue 或 Pull Request/);
   assert.match(chineseReadme, /增加更多翻译语言/);
 

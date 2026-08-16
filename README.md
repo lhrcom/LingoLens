@@ -36,19 +36,17 @@ Keep this folder in the same place after installation. If you move or delete it,
 
 Never paste an API key into an AI chat, source file, screenshot, or public message. Enter keys yourself, directly in the LingoLens Settings page. Your coding agent can point to the correct field without seeing the key.
 
-## Install manually
+## Install and start using LingoLens
 
-If you prefer to do it yourself:
+1. Download the latest LingoLens ZIP from the repository's [Releases page](https://github.com/lhrcom/LingoLens/releases). If no packaged release is available, open the repository's **Code** menu, choose **Download ZIP**, and extract it.
+2. Move the extracted folder to a permanent location. Open it and locate the folder that directly contains `manifest.json`; this is the folder Chrome must load.
+3. In Chrome, open `chrome://extensions`, turn on **Developer mode**, click **Load unpacked**, and select that exact folder.
+4. Pin LingoLens from Chrome's Extensions menu, click its icon, and open **Settings** from the side panel.
+5. Enter your own Supadata and DeepSeek API keys. Add a Deepgram key only if you want live transcription when a video has no complete subtitle track. Do not put API keys in GitHub files, issues, screenshots, or chat messages.
+6. To translate a normal web page, select English text and click the nearby **译** button, or open the side panel and choose **Translate page** for full-page bilingual translation.
+7. To study a YouTube video, open a watch page with captions, open the LingoLens side panel, and use the transcript, bilingual view, overview, explanations, notes, or live subtitles.
 
-1. Locate `lingolens-v1.3.2.zip`, or use the generated `lingolens-v1.3.2` project folder directly.
-2. If using the ZIP, choose a permanent folder and extract it there. Optional suggestions are `~/Documents/lingolens` on macOS or Linux, or `%USERPROFILE%\Documents\lingolens` on Windows. You may use a different folder.
-3. In Chrome, open `chrome://extensions`.
-4. Turn on **Developer mode**.
-5. Click **Load unpacked**.
-6. Select the exact project folder you chose, which must contain `manifest.json`.
-7. Pin LingoLens from Chrome's Extensions menu if you want quick access.
-
-Because this is an unpacked extension, it does not update automatically. After downloading an update or changing local files, click **Reload** on the LingoLens card at `chrome://extensions`, then refresh open YouTube tabs. Moving or deleting the source folder breaks the unpacked extension until you load it again from the new location.
+LingoLens is loaded locally and does not update automatically. To install a newer version, download and extract it, replace the files in your permanent LingoLens folder, then click **Reload** on the LingoLens card at `chrome://extensions` and refresh any open pages. Keep the folder in place; moving or deleting it disables the unpacked extension until you load it again from its new location.
 
 ## Set up your API keys
 
