@@ -69,6 +69,10 @@ test("release copy documents current scope without em dashes", () => {
     /\bYT Digest\b/,
   );
   assert.match(readme, /^# LingoLens$/m);
+  assert.match(readme, /^## Project origin$/m);
+  assert.match(readme, /https:\/\/github\.com\/zarazhangrui\/youtube-digest/);
+  assert.match(readme, /independently maintained improvement based on/);
+  assert.match(readme, /not an official release of the upstream project/);
   assert.match(
     readme,
     /Turn every YouTube video into a resource for deep learning\./,
@@ -94,6 +98,10 @@ test("release copy documents current scope without em dashes", () => {
   assert.match(readme, /upstream issues and pull requests are not accepted/i);
   assert.doesNotMatch(readme, /^## Contributing$/m);
   assert.match(chineseReadme, /^# LingoLens$/m);
+  assert.match(chineseReadme, /^## 项目来源$/m);
+  assert.match(chineseReadme, /https:\/\/github\.com\/zarazhangrui\/youtube-digest/);
+  assert.match(chineseReadme, /改进并独立维护/);
+  assert.match(chineseReadme, /并非上游项目的官方版本/);
   assert.match(chineseReadme, /把每个 YouTube 视频变成一份可以深入学习的资料/);
   assert.match(chineseReadme, /^## 让你的编程 Agent 帮你安装$/m);
   assert.match(

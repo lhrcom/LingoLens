@@ -14,6 +14,10 @@
 
 LingoLens 是一个需要自行提供 API Key 的本地项目，可直接使用本次生成的目录或 ZIP 安装。目前没有上架 Chrome 应用商店，不赠送 API 额度，也没有开发者运营的服务器。
 
+## 项目来源
+
+LingoLens 是基于 zarazhangrui 的 [YouTube Digest](https://github.com/zarazhangrui/youtube-digest) 改进并独立维护的项目；上游项目采用 MIT License。LingoLens 保留了原项目的 YouTube 学习流程，并增加了普通网页划词翻译、整页双语翻译、带 Deepgram 回退的实时双语字幕、统一的 DeepSeek Flash/Pro 模型设置，以及相关界面和可靠性改进。LingoLens 并非上游项目的官方版本。
+
 ## 让你的编程 Agent 帮你安装
 
 你不需要看懂代码，也不需要会使用命令行。把下面这段话发送给你的编程 Agent：
