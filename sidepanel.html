@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LingoLens</title>
+    <link rel="stylesheet" href="sidepanel.css" />
+  </head>
+  <body>
+    <!-- HEADER -->
+    <!-- Note: the panel's own "LingoLens" title is shown by Chrome's side-panel
+         title bar, so we don't repeat a logo here. -->
+    <div class="header">
+      <div class="header-top">
+        <!-- Video info -->
+        <div class="video-info" id="videoInfo" style="display: none">
+          <div class="video-title" id="videoTitle"></div>
+          <div class="video-channel" id="videoChannel"></div>
+        </div>
+        <button
+          class="settings-btn"
+          id="settingsBtn"
+          type="button"
+          title="Open LingoLens settings"
+          aria-label="Open LingoLens settings"
+        >
+          Settings
+        </button>
+      </div>
+
+      <!-- Tab navigation -->
+      <div class="tabs" id="tabsNav" style="display: none">
+        <button class="tab active" data-tab="transcript">Transcript</button>
+        <button class="tab" data-tab="overview">Overview</button>
+        <button class="tab" data-tab="notes">Notes</button>
+      </div>
+    </div>
+
+    <details class="page-translation-card" id="pageTranslationCard">
+      <summary>
+        <span>
+          <strong>Full-page bilingual translation</strong>
+          <small>Insert Simplified Chinese below readable English text</small>
+        </span>
+        <span class="page-translation-ready" id="pageTranslationAvailability">Ready</span>
+      </summary>
+      <div class="page-translation-body">
+        <section class="page-full-section" aria-labelledby="pageFullTitle">
+          <div class="page-tool-heading" id="pageFullTitle">Current page</div>
+          <div class="page-translation-actions">
+            <button class="page-primary-btn" id="translatePageBtn" type="button">Translate page</button>
+            <button id="stopPageTranslationBtn" type="button" disabled>Stop</button>
+            <button id="removePageTranslationsBtn" type="button">Remove</button>
+          </div>
+          <div class="page-progress-copy">
+            <span id="pageTranslationStatus">Page translation has not started.</span>
+            <span id="pageTranslationCounts"></span>
+          </div>
+          <div class="page-progress-track" aria-hidden="true">
+            <div class="page-progress-bar" id="pageTranslationProgress"></div>
+          </div>
+        </section>
+      </div>
+    </details>
+
+    <section class="live-caption-card" id="liveCaptionCard" aria-labelledby="liveCaptionTitle">
+      <div class="live-caption-heading">
+        <div>
+          <div class="live-caption-title" id="liveCaptionTitle">Live bilingual subtitles</div>
+          <div class="live-caption-status" id="liveCaptionStatus" role="status">
+            Inspecting this page…
+          </div>
+        </div>
+        <span class="live-caption-mode" id="liveCaptionMode">Ready</span>
+      </div>
+      <label class="live-video-label" for="liveVideoSelect">Video on this page</label>
+      <select id="liveVideoSelect" class="live-video-select" disabled>
+        <option>Looking for video…</option>
+      </select>
+      <div class="live-caption-warning" id="liveCaptionWarning" hidden></div>
+      <div class="live-caption-controls">
+        <button class="live-primary-btn" id="startLiveCaptionBtn" type="button" disabled>
+          Start subtitles
+        </button>
+        <button class="live-secondary-btn" id="stopLiveCaptionBtn" type="button" disabled>
+          Stop
+        </button>
+        <button class="live-secondary-btn" id="openLiveSettingsBtn" type="button">
+          Keys
+        </button>
+      </div>
+      <div class="live-caption-history" id="liveCaptionHistory" aria-live="polite"></div>
+      <div class="live-export-controls" id="liveExportControls" hidden>
+        <button type="button" data-live-export="srt">SRT</button>
+        <button type="button" data-live-export="vtt">VTT</button>
+        <button type="button" data-live-export="md">Markdown</button>
+      </div>
+    </section>
+
+    <!-- MAIN CONTENT -->
+    <div class="content" id="contentArea">
+      <!-- WELCOME STATE -->
+      <div id="welcomeState" class="welcome-container">
+        <div class="welcome-icon">&#9655;</div>
+        <div class="welcome-title">Ready to Digest</div>
+        <div class="welcome-desc">
+          Navigate to a YouTube video and click the extension icon to get an
+          AI-powered digest.
+        </div>
+      </div>
+
+      <!-- LOADING STATE -->
+      <div id="loadingState" style="display: none">
+        <div class="loading-container">
+          <div class="loading-bar"></div>
+          <div class="loading-text" id="loadingText">Fetching transcript</div>
+          <div class="loading-subtext" id="loadingSubtext">
+            Extracting captions from video...
+          </div>
+        </div>
+      </div>
+
+      <!-- ERROR STATE -->
+      <div id="errorState" style="display: none">
+        <div class="error-container">
+          <div class="error-icon">&#9888;</div>
+          <div class="error-title" id="errorTitle">Error</div>
+          <div class="error-message" id="errorMessage">
+            Something went wrong.
+          </div>
+          <button class="error-btn" id="errorBtn">Try Again</button>
+        </div>
+      </div>
+
+      <!-- RESULTS -->
+      <div id="resultsState" style="display: none">
+        <!-- TAB: Transcript (default - no LLM required) -->
+        <div class="tab-panel active" data-panel="transcript">
+          <div class="section">
+            <div class="section-header transcript-section-header">
+              <div class="transcript-header-main">
+                <div class="section-title-wrap">
+                  <div class="section-title">Full Transcript</div>
+                </div>
+                <div
+                  class="transcript-mode-control"
+                  id="transcriptModeControl"
+                  role="group"
+                  aria-label="Transcript language"
+                >
+                  <button
+                    class="transcript-mode-btn active"
+                    type="button"
+                    data-transcript-mode="original"
+                    aria-pressed="true"
+                  >Original</button>
+                  <button
+                    class="transcript-mode-btn"
+                    type="button"
+                    data-transcript-mode="zh"
+                    aria-pressed="false"
+                  >中文</button>
+                  <button
+                    class="transcript-mode-btn"
+                    type="button"
+                    data-transcript-mode="bilingual"
+                    aria-pressed="false"
+                  >双语</button>
+                  <span
+                    class="translation-spinner"
+                    id="langSpinner"
+                    aria-label="Translating"
+                  ></span>
+                </div>
+              </div>
+              <div class="transcript-actions">
+                <button class="enhance-btn" id="copyTranscriptBtn">Copy</button>
+                <button class="enhance-btn" id="exportTranscriptBtn">
+                  Export
+                </button>
+              </div>
+            </div>
+            <div id="transcriptList"></div>
+          </div>
+        </div>
+
+        <!-- TAB: Overview (chapters + key quotes) - requires LLM -->
+        <div class="tab-panel" data-panel="overview">
+          <!-- Chapters -->
+          <div class="section">
+            <div class="section-title">Chapters</div>
+            <ul class="chapter-list" id="chapterList">
+              <li
+                class="chapter-item"
+                style="
+                  color: var(--text-muted);
+                  cursor: default;
+                  border-color: var(--border);
+                "
+              >
+                Chapters will appear here
+              </li>
+            </ul>
+          </div>
+
+          <!-- Key Quotes -->
+          <div class="section">
+            <div class="section-title">Key Quotes</div>
+            <div id="quotesList">
+              <div
+                class="quote-item"
+                style="
+                  color: var(--text-muted);
+                  border-left-color: var(--border);
+                  cursor: default;
+                "
+              >
+                <div class="quote-text" style="font-style: normal">
+                  Quotes will be extracted when you view this tab...
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB: Notes -->
+        <div class="tab-panel" data-panel="notes">
+          <div class="section">
+            <div class="section-header">
+              <div class="section-title">Saved Notes</div>
+              <div class="notes-filter">
+                <button
+                  class="enhance-btn active"
+                  id="notesFilterThis"
+                  aria-pressed="true"
+                >
+                  This Video
+                </button>
+                <button
+                  class="enhance-btn"
+                  id="notesFilterAll"
+                  aria-pressed="false"
+                >
+                  All Notes
+                </button>
+              </div>
+            </div>
+            <p class="notes-intro" id="notesIntro">
+              Move your mouse over the video and click the 📝 Note button to
+              save timestamped notes, or press the "n" key while the video is
+              focused.
+            </p>
+            <div id="notesList"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Auto-scroll follow button — appears when user scrolls away from playback position -->
+    <button
+      class="follow-playback-btn"
+      id="followPlaybackBtn"
+      style="display: none"
+    >
+      Follow playback
+    </button>
+
+    <script src="settings.js"></script>
+    <script src="live-caption-shared.js"></script>
+    <script src="sidepanel.js"></script>
+  </body>
+</html>

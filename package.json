@@ -1,0 +1,12 @@
+{
+  "name": "lingolens",
+  "version": "1.3.2",
+  "private": true,
+  "description": "Translate web pages and selections, create bilingual video captions, and build YouTube learning resources.",
+  "license": "MIT",
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "check": "bash scripts/check-release.sh",
+    "package": "bash scripts/package-extension.sh"
+  }
+}
