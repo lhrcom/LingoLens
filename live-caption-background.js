@@ -1,9 +1,94 @@
-/* global YTD_LIVE_CAPTIONS, YTD_SETTINGS, getSettings, requestAiCompletion, parseLooseJson */
+/* global YTD_LIVE_CAPTIONS, getSettings, parseLooseJson, requestAiCompletion, requestAiCompletionStream, translateTranscriptBatch */
 
 let activeCaptionSession = null;
 const captionContexts = new Map();
 let creatingOffscreenDocument = null;
 const ACTIVE_CAPTION_SESSION_KEY = "caption_session_active";
+const CAPTURE_AUTHORIZATION_TTL_MS = 30_000;
+let pendingCaptionStart = null;
+let pendingCaptionTimer = null;
+
+function isActiveTabCaptureError(error) {
+  return /activeTab|has not been invoked|cannot be captured|not been granted/i.test(
+    String(error?.message || error || ""),
+  );
+}
+
+function clearPendingCaptionStart(reason = "") {
+  if (pendingCaptionTimer) clearTimeout(pendingCaptionTimer);
+  pendingCaptionTimer = null;
+  const pending = pendingCaptionStart;
+  pendingCaptionStart = null;
+  if (pending && reason) {
+    sendRuntime({
+      action: "captionPendingStartCancelled",
+      tabId: pending.tabId,
+      url: pending.url,
+      reason,
+    });
+  }
+  return pending;
+}
+
+async function queuePendingCaptionStart(message) {
+  const tab = await chrome.tabs.get(message.tabId);
+  if (
+    message.youtubeVideoId &&
+    YTD_LIVE_CAPTIONS.youtubeVideoId(tab.url || tab.pendingUrl || "") !== message.youtubeVideoId
+  ) {
+    throw new Error("The YouTube video changed before authorization could be requested.");
+  }
+  clearPendingCaptionStart();
+  pendingCaptionStart = {
+    message: { ...message, tabId: tab.id },
+    tabId: tab.id,
+    url: YTD_LIVE_CAPTIONS.normalizedPageUrl(tab.url || tab.pendingUrl || ""),
+    youtubeVideoId: message.youtubeVideoId || "",
+    expiresAt: Date.now() + CAPTURE_AUTHORIZATION_TTL_MS,
+  };
+  pendingCaptionTimer = setTimeout(() => {
+    clearPendingCaptionStart("Authorization request expired. Click Start subtitles again.");
+  }, CAPTURE_AUTHORIZATION_TTL_MS);
+  sendRuntime({
+    action: "captionCapturePermissionRequired",
+    tabId: tab.id,
+    url: pendingCaptionStart.url,
+  });
+}
+
+function resumePendingFromAction(tab) {
+  const pending = pendingCaptionStart;
+  if (!pending) return null;
+  const clickedUrl = YTD_LIVE_CAPTIONS.normalizedPageUrl(tab?.url || tab?.pendingUrl || "");
+  if (
+    !tab?.id ||
+    tab.id !== pending.tabId ||
+    clickedUrl !== pending.url ||
+    Date.now() > pending.expiresAt
+  ) {
+    clearPendingCaptionStart("The requested video is no longer the active page.");
+    return null;
+  }
+
+  // This call intentionally occurs before any await. Chrome grants activeTab
+  // only for the duration of the toolbar Action click user gesture.
+  const streamIdPromise = chrome.tabCapture.getMediaStreamId({ targetTabId: tab.id });
+  clearPendingCaptionStart();
+  const resumePromise = startCaptionSession(pending.message, streamIdPromise)
+    .then((result) => {
+      sendRuntime({ action: "captionPendingStartResolved", ...result });
+      return result;
+    })
+    .catch(async (error) => {
+      if (activeCaptionSession?.status === "connecting") await stopCaptionSession("error");
+      const result = { success: false, error: error.message || "Could not capture this tab." };
+      sendRuntime({ action: "captionPendingStartResolved", ...result });
+      return result;
+    });
+  return resumePromise;
+}
+
+globalThis.YTD_LIVE_CAPTION_BACKGROUND = { resumePendingFromAction };
 
 const captionRestorePromise = (async () => {
   const stored = await chrome.storage.local.get(ACTIVE_CAPTION_SESSION_KEY);
@@ -34,6 +119,10 @@ async function activeHttpTab() {
 
 async function prepareCaptionPage({ tabId, videoId } = {}) {
   const tab = tabId ? await chrome.tabs.get(tabId) : await activeHttpTab();
+  const expectedPageContextKey = YTD_LIVE_CAPTIONS.pageContextKey(
+    "page",
+    tab.url || tab.pendingUrl || "",
+  );
   try {
     await chrome.scripting.executeScript({
       target: { tabId: tab.id },
@@ -45,8 +134,12 @@ async function prepareCaptionPage({ tabId, videoId } = {}) {
   const result = await chrome.tabs.sendMessage(tab.id, {
     action: "probeCaptionPage",
     videoId: videoId || "",
+    expectedPageContextKey,
   });
   if (!result?.success) throw new Error(result?.error || "Could not inspect page videos.");
+  if (result.page?.pageContextKey !== expectedPageContextKey) {
+    throw new Error("The page video changed during inspection.");
+  }
   return { ...result, tabId: tab.id };
 }
 
@@ -114,7 +207,12 @@ async function upsertCaptionSegment(input) {
   );
   const segment = activeCaptionSession.segments.find((item) => item.id === input.id);
   if (segment) {
-    const message = { action: "captionSegmentUpsert", segment };
+    const message = {
+      action: "captionSegmentUpsert",
+      sessionId: activeCaptionSession.id,
+      sessionUrl: activeCaptionSession.url,
+      segment,
+    };
     sendRuntime(message);
     sendTab(activeCaptionSession.tabId, message);
   }
@@ -135,58 +233,6 @@ function liveTranslationPrompt() {
     "Use concise natural subtitle Chinese. Never add explanations or quotes.",
     "Use CONTEXT only to disambiguate CURRENT.",
   ].join("\n");
-}
-
-async function requestAiCompletionStream({ messages, onDelta, signal }) {
-  const settings = await getSettings();
-  if (!settings.aiApiKey) throw new Error("DeepSeek API key not configured.");
-  const response = await fetch(YTD_SETTINGS.chatCompletionsUrl(), {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${settings.aiApiKey}`,
-    },
-    body: JSON.stringify({
-      model: settings.aiModel,
-      messages,
-      max_tokens: 1000,
-      temperature: 0.1,
-      stream: true,
-      thinking: { type: "disabled" },
-    }),
-    signal,
-  });
-  if (!response.ok) {
-    const error = new Error(`DeepSeek error: ${response.status}`);
-    error.status = response.status;
-    throw error;
-  }
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  let text = "";
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split(/\r?\n/);
-    buffer = lines.pop() || "";
-    for (const line of lines) {
-      if (!line.startsWith("data:")) continue;
-      const data = line.slice(5).trim();
-      if (!data || data === "[DONE]") continue;
-      try {
-        const delta = JSON.parse(data).choices?.[0]?.delta?.content;
-        if (typeof delta === "string") {
-          text += delta;
-          onDelta?.(text);
-        }
-      } catch (_error) {
-        // Ignore malformed provider keepalive lines.
-      }
-    }
-  }
-  return text.trim();
 }
 
 async function revisePreviousCaption(previousIndex, nextSegment) {
@@ -239,11 +285,6 @@ async function translateLiveCaption(segmentId, attempt = 0) {
   state.controllers.get(segmentId)?.abort();
   state.controllers.set(segmentId, controller);
   captionContexts.set(session.id, state);
-  let timedOut = false;
-  const timeoutId = setTimeout(() => {
-    timedOut = true;
-    controller.abort();
-  }, 50_000);
   await upsertCaptionSegment({ ...segment, translationState: "streaming", error: "" });
   try {
     const translated = await requestAiCompletionStream({
@@ -280,12 +321,14 @@ async function translateLiveCaption(segmentId, attempt = 0) {
       void revisePreviousCaption(index, next);
     }
   } catch (error) {
-    if (error.name === "AbortError" && !timedOut) return;
+    if (error.name === "AbortError") return;
     if (attempt < 2) {
       await upsertCaptionSegment({
         ...segment,
         translationState: "queued",
-        error: timedOut ? "Translation timed out; retrying…" : "Translation failed; retrying…",
+        error: /TIMEOUT/.test(error.code || "")
+          ? "Translation timed out; retrying…"
+          : "Translation failed; retrying…",
       });
       setTimeout(() => translateLiveCaption(segmentId, attempt + 1), 500 * 2 ** attempt);
       return;
@@ -296,7 +339,6 @@ async function translateLiveCaption(segmentId, attempt = 0) {
       error: error.message || "Translation failed",
     });
   } finally {
-    clearTimeout(timeoutId);
     const currentState = captionContexts.get(session.id);
     if (currentState?.controllers?.get(segmentId) === controller) {
       currentState.controllers.delete(segmentId);
@@ -319,7 +361,7 @@ async function buildPrefetchedContext(session, signal) {
           {
             role: "system",
             content:
-              "Build compact context for accurate English-to-Chinese subtitle translation. Return JSON with summary and glossary, where glossary is an array of {source,target}.",
+              `Build compact context for accurate ${session.sourceLanguage || "auto-detected source language"}-to-Simplified-Chinese subtitle translation. Return JSON with summary and glossary, where glossary is an array of {source,target}.`,
           },
           {
             role: "user",
@@ -353,83 +395,61 @@ async function translatePrefetchedBatch(
   const nearby = session.segments
     .slice(first, last)
     .map(({ id, sourceText }) => ({ id, text: sourceText }));
-  const { text } = await requestAiCompletion({
-    signal,
-    temperature: 0.1,
-    maxTokens: 2400,
-    responseFormat: { type: "json_object" },
-    messages: [
-      {
-        role: "system",
-        content:
-          "Translate the requested English subtitle segments to natural Simplified Chinese. Preserve IDs exactly and return JSON {segments:[{id,text}]}. Do not merge, split, omit, or explain segments.",
+  const returned = await translateTranscriptBatch(
+    {
+      profile: "prefetched",
+      videoId: session.transcriptVideoId,
+      sourceHash: session.transcriptSourceHash,
+      videoTitle: session.title,
+      sourceLanguage: session.sourceLanguage,
+      context: {
+        summary: context.summary,
+        glossary: context.glossary,
+        nearbyContext: nearby,
       },
-      {
-        role: "user",
-        content: JSON.stringify({
-          title: session.title,
-          summary: context.summary,
-          glossary: context.glossary,
-          nearbyContext: nearby,
-          requestedIds: targets.map((item) => item.id),
-        }),
-      },
-    ],
-  });
+      segments: targets.map((item) => ({
+        id: item.id,
+        transcriptId: item.transcriptId || item.id,
+        text: item.sourceText,
+      })),
+    },
+    { signal },
+  );
   if (
     activeCaptionSession?.id !== session.id ||
     (generation != null && context.generation !== generation)
   ) {
     return false;
   }
-  const parsed = parseLooseJson(text);
-  const returned = (Array.isArray(parsed.segments) ? parsed.segments : []).filter(
-    (item) => typeof item?.id === "string" && typeof item?.text === "string",
-  );
-  const byId = new Map(returned.map((item) => [item.id, item.text.trim()]));
-  const requestedIds = new Set(targets.map((item) => item.id));
-  if (
-    returned.length !== targets.length ||
-    byId.size !== targets.length ||
-    returned.some((item) => !requestedIds.has(item.id) || !item.text.trim())
-  ) {
-    throw new Error("Translation did not preserve the requested segment IDs one-to-one.");
-  }
+  const byId = new Map(returned.map((item) => [item.id, item]));
   for (const target of targets) {
-    const translated = byId.get(target.id);
+    const result = byId.get(target.id);
     await upsertCaptionSegment({
       ...target,
-      translationText: translated,
-      translationState: "revised",
-      error: "",
+      translationText: result?.text || "",
+      translationState: result?.text ? "revised" : "error",
+      error: result?.text ? "" : result?.error || "Translation unavailable",
     });
   }
   return true;
 }
 
 async function translatePrefetchedBatchWithRetry(session, indices, context) {
-  let lastError;
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    if (activeCaptionSession?.id !== session.id) return false;
-    const controller = new AbortController();
-    const generation = context.generation;
-    context.batchController = controller;
-    try {
-      return await translatePrefetchedBatch(session, indices, context, {
-        signal: controller.signal,
-        generation,
-      });
-    } catch (error) {
-      if (error.name === "AbortError" && context.generation !== generation) return false;
-      lastError = error;
-      if (attempt < 2) {
-        await new Promise((resolve) => setTimeout(resolve, 500 * 2 ** attempt));
-      }
-    } finally {
-      if (context.batchController === controller) context.batchController = null;
-    }
+  if (activeCaptionSession?.id !== session.id) return false;
+  const controller = new AbortController();
+  const generation = context.generation;
+  context.batchController = controller;
+  try {
+    return await translatePrefetchedBatch(session, indices, context, {
+      signal: controller.signal,
+      generation,
+    });
+  } catch (error) {
+    if (error.name === "AbortError" && context.generation !== generation) return false;
+    throw error;
+  } finally {
+    if (context.batchController === controller) context.batchController = null;
   }
-  throw lastError;
 }
 
 async function translatePrefetchedSession(sessionId, currentMs) {
@@ -488,6 +508,7 @@ async function translatePrefetchedSession(sessionId, currentMs) {
 }
 
 async function stopCaptionSession(reason = "stopped") {
+  if (reason === "stopped") clearPendingCaptionStart();
   await captionRestorePromise;
   const session = activeCaptionSession;
   if (!session) return { success: true };
@@ -531,8 +552,13 @@ async function startCaptionSession(message, streamIdPromise) {
     url: prepared.page.url || tab.url,
     title: prepared.page.title || tab.title,
     mode,
-    videoId: message.videoId || prepared.page.selectedVideoId,
+    videoId: prepared.page.selectedVideoId || message.videoId,
+    transcriptVideoId: message.transcriptVideoId || message.youtubeVideoId || "",
+    transcriptSourceHash: message.transcriptSourceHash || "",
   });
+  if (message.sourceLabel) activeCaptionSession.source = message.sourceLabel;
+  activeCaptionSession.sourceLanguage =
+    message.sourceLanguage || (mode === "live" ? "en" : "auto-detected");
   activeCaptionSession.status = mode === "prefetched" ? "preparing context" : "connecting";
   if (mode === "prefetched") {
     activeCaptionSession.segments = prefetched.map((segment) =>
@@ -584,7 +610,7 @@ async function handleOffscreenEvent(message) {
     const segment = await upsertCaptionSegment({
       ...message.data,
       translationState: "queued",
-      source: "deepgram",
+      source: "deepgram-live",
     });
     if (segment?.recognitionState === "final") {
       void translateLiveCaption(segment.id);
@@ -620,6 +646,23 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       .then(sendResponse)
       .catch(async (error) => {
         if (activeCaptionSession?.status === "connecting") await stopCaptionSession("error");
+        if (!hasPrefetched && isActiveTabCaptureError(error)) {
+          try {
+            await queuePendingCaptionStart({ ...message, tabId });
+            sendResponse({
+              success: false,
+              error: "Click the LingoLens icon in the Chrome toolbar to authorize this video. Subtitles will start automatically.",
+              errorCode: "ACTIVE_TAB_REQUIRED",
+              requiresActionClick: true,
+            });
+          } catch (contextError) {
+            sendResponse({
+              success: false,
+              error: contextError.message || "The video changed before authorization could be requested.",
+            });
+          }
+          return;
+        }
         sendResponse({ success: false, error: error.message });
       });
     return true;
@@ -633,26 +676,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       sendResponse({ success: true, session: activeCaptionSession }),
     );
     return true;
-  }
-  if (message.action === "retrySegmentTranslation") {
-    const segment = activeCaptionSession?.segments.find((item) => item.id === message.segmentId);
-    if (!segment) {
-      sendResponse({ success: false, error: "Segment not found." });
-      return false;
-    }
-    if (activeCaptionSession.mode === "live") void translateLiveCaption(segment.id);
-    else {
-      const index = activeCaptionSession.segments.indexOf(segment);
-      const context = captionContexts.get(activeCaptionSession.id) || {
-        summary: activeCaptionSession.title,
-        glossary: [],
-        currentMs: segment.startMs,
-        generation: 0,
-      };
-      void translatePrefetchedBatchWithRetry(activeCaptionSession, [index], context);
-    }
-    sendResponse({ success: true });
-    return false;
   }
   if (message.action === "captionPlaybackPositionChanged") {
     const session = activeCaptionSession;
@@ -677,12 +700,25 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 });
 
 chrome.tabs.onRemoved.addListener((tabId) => {
+  if (pendingCaptionStart?.tabId === tabId) clearPendingCaptionStart("The requested tab was closed.");
   if (activeCaptionSession?.tabId === tabId) void stopCaptionSession("tab closed");
 });
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+  if (changeInfo.url && pendingCaptionStart?.tabId === tabId) {
+    const nextUrl = YTD_LIVE_CAPTIONS.normalizedPageUrl(changeInfo.url);
+    if (nextUrl !== pendingCaptionStart.url) {
+      clearPendingCaptionStart("The page changed before authorization.");
+    }
+  }
   if (changeInfo.url && activeCaptionSession?.tabId === tabId) {
     void stopCaptionSession("page navigated");
+  }
+});
+
+chrome.tabs.onActivated.addListener(({ tabId }) => {
+  if (pendingCaptionStart && pendingCaptionStart.tabId !== tabId) {
+    clearPendingCaptionStart("The active tab changed before authorization.");
   }
 });
 

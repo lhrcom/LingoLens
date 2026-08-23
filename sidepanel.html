@@ -63,39 +63,42 @@
       </div>
     </details>
 
-    <section class="live-caption-card" id="liveCaptionCard" aria-labelledby="liveCaptionTitle">
-      <div class="live-caption-heading">
-        <div>
-          <div class="live-caption-title" id="liveCaptionTitle">Live bilingual subtitles</div>
-          <div class="live-caption-status" id="liveCaptionStatus" role="status">
-            Inspecting this page…
+    <details class="live-caption-card" id="liveCaptionCard">
+      <summary class="live-caption-summary">
+        <div class="live-caption-heading">
+          <div>
+            <div class="live-caption-title" id="liveCaptionTitle">Live bilingual subtitles</div>
+            <div class="live-caption-status" id="liveCaptionStatus" role="status">
+              Inspecting this page…
+            </div>
           </div>
+          <span class="live-caption-mode" id="liveCaptionMode">Ready</span>
         </div>
-        <span class="live-caption-mode" id="liveCaptionMode">Ready</span>
+      </summary>
+      <div class="live-caption-body">
+        <label class="live-video-label" for="liveVideoSelect">Video on this page</label>
+        <select id="liveVideoSelect" class="live-video-select" disabled>
+          <option>Looking for video…</option>
+        </select>
+        <div class="live-caption-warning" id="liveCaptionWarning" hidden></div>
+        <div class="live-caption-controls">
+          <button class="live-primary-btn" id="startLiveCaptionBtn" type="button" disabled>
+            Start subtitles
+          </button>
+          <button class="live-secondary-btn" id="stopLiveCaptionBtn" type="button" disabled>
+            Stop
+          </button>
+          <button class="live-secondary-btn" id="openLiveSettingsBtn" type="button">
+            Keys
+          </button>
+        </div>
+        <div class="live-export-controls" id="liveExportControls" hidden>
+          <button type="button" data-live-export="srt">SRT</button>
+          <button type="button" data-live-export="vtt">VTT</button>
+          <button type="button" data-live-export="md">Markdown</button>
+        </div>
       </div>
-      <label class="live-video-label" for="liveVideoSelect">Video on this page</label>
-      <select id="liveVideoSelect" class="live-video-select" disabled>
-        <option>Looking for video…</option>
-      </select>
-      <div class="live-caption-warning" id="liveCaptionWarning" hidden></div>
-      <div class="live-caption-controls">
-        <button class="live-primary-btn" id="startLiveCaptionBtn" type="button" disabled>
-          Start subtitles
-        </button>
-        <button class="live-secondary-btn" id="stopLiveCaptionBtn" type="button" disabled>
-          Stop
-        </button>
-        <button class="live-secondary-btn" id="openLiveSettingsBtn" type="button">
-          Keys
-        </button>
-      </div>
-      <div class="live-caption-history" id="liveCaptionHistory" aria-live="polite"></div>
-      <div class="live-export-controls" id="liveExportControls" hidden>
-        <button type="button" data-live-export="srt">SRT</button>
-        <button type="button" data-live-export="vtt">VTT</button>
-        <button type="button" data-live-export="md">Markdown</button>
-      </div>
-    </section>
+    </details>
 
     <!-- MAIN CONTENT -->
     <div class="content" id="contentArea">
@@ -116,6 +119,20 @@
           <div class="loading-text" id="loadingText">Fetching transcript</div>
           <div class="loading-subtext" id="loadingSubtext">
             Extracting captions from video...
+          </div>
+        </div>
+      </div>
+
+      <!-- SUPADATA AI CONFIRMATION / JOB STATE -->
+      <div id="generationState" style="display: none">
+        <div class="generation-container">
+          <span class="generation-source">Supadata AI</span>
+          <div class="generation-title" id="generationTitle">Generate full transcript?</div>
+          <div class="generation-message" id="generationMessage"></div>
+          <div class="generation-status" id="generationStatus" role="status"></div>
+          <div class="generation-actions">
+            <button class="error-btn" id="generateTranscriptBtn" type="button">Generate transcript</button>
+            <button class="generation-secondary-btn" id="useLiveAiBtn" type="button">Use Live AI instead</button>
           </div>
         </div>
       </div>
@@ -267,6 +284,7 @@
 
     <script src="settings.js"></script>
     <script src="live-caption-shared.js"></script>
+    <script src="transcript-translation-core.js"></script>
     <script src="sidepanel.js"></script>
   </body>
 </html>

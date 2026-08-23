@@ -43,6 +43,7 @@ Examples include:
 - Use dedicated, scoped API keys where possible and set provider spending limits.
 - Do not reuse keys from production systems.
 - Use dedicated Deepgram and DeepSeek keys for live transcription and translation.
+- Live AI never captures a pending page after its tab, URL, or video changes; missing `activeTab` authorization must be granted by clicking the LingoLens toolbar icon and expires after 30 seconds.
 - Revoke keys immediately if a device, browser profile, ZIP, log, or screenshot exposes them.
 - Remember that Chrome local extension storage is not an encrypted password vault.
 

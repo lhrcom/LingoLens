@@ -29,6 +29,66 @@ var YTD_LIVE_CAPTIONS = (() => {
     return Math.min(maximum, Math.max(minimum, value));
   }
 
+  function normalizedPageUrl(url) {
+    try {
+      const parsed = new URL(url || "");
+      parsed.hash = "";
+      return parsed.href;
+    } catch (_error) {
+      return String(url || "");
+    }
+  }
+
+  function youtubeVideoId(url) {
+    try {
+      const parsed = new URL(url || "");
+      if (parsed.hostname === "youtu.be") return parsed.pathname.slice(1);
+      if (
+        parsed.hostname === "youtube.com" ||
+        parsed.hostname.endsWith(".youtube.com")
+      ) {
+        if (parsed.searchParams.has("v")) return parsed.searchParams.get("v");
+        if (parsed.pathname.startsWith("/embed/")) return parsed.pathname.split("/")[2];
+      }
+    } catch (_error) {
+      return "";
+    }
+    return "";
+  }
+
+  function pageContextKey(tabId, url) {
+    const videoId = youtubeVideoId(url);
+    return `${tabId || "none"}:${videoId ? `youtube:${videoId}` : normalizedPageUrl(url)}`;
+  }
+
+  async function retryWithDelays(
+    delays,
+    attempt,
+    {
+      isCurrent = () => true,
+      wait = (delayMs) =>
+        delayMs
+          ? new Promise((resolve) => setTimeout(resolve, delayMs))
+          : Promise.resolve(),
+    } = {},
+  ) {
+    let lastError = null;
+    for (const delayMs of delays || []) {
+      await wait(Math.max(0, Number(delayMs) || 0));
+      if (!isCurrent()) return { cancelled: true, value: null, error: null };
+      try {
+        return {
+          cancelled: false,
+          value: await attempt(),
+          error: null,
+        };
+      } catch (error) {
+        lastError = error;
+      }
+    }
+    return { cancelled: false, value: null, error: lastError };
+  }
+
   function normalizeOverlayPreferences(input = {}) {
     const fontScale = Math.round(Number(input.fontScale) * 10) / 10;
     const xRatio = Number(input.xRatio);
@@ -86,7 +146,15 @@ var YTD_LIVE_CAPTIONS = (() => {
     };
   }
 
-  function createSession({ tabId, url, title, mode, videoId = "" }) {
+  function createSession({
+    tabId,
+    url,
+    title,
+    mode,
+    videoId = "",
+    transcriptVideoId = "",
+    transcriptSourceHash = "",
+  }) {
     const startedAt = Date.now();
     return {
       id: `caption-${startedAt}-${Math.random().toString(36).slice(2, 8)}`,
@@ -97,6 +165,8 @@ var YTD_LIVE_CAPTIONS = (() => {
       status: "starting",
       source: mode === "prefetched" ? "video subtitles" : "Deepgram Nova-3",
       videoId,
+      transcriptVideoId: String(transcriptVideoId || ""),
+      transcriptSourceHash: String(transcriptSourceHash || ""),
       startedAt,
       updatedAt: startedAt,
       segments: [],
@@ -113,6 +183,7 @@ var YTD_LIVE_CAPTIONS = (() => {
     );
     return {
       id: String(input?.id || `${source}-${startMs}`),
+      transcriptId: String(input?.transcriptId || ""),
       startMs,
       endMs,
       sourceText: String(input?.sourceText || input?.text || "").trim(),
@@ -211,6 +282,115 @@ var YTD_LIVE_CAPTIONS = (() => {
     return active;
   }
 
+  /**
+   * Keep only videos that can actually be watched, prefer the YouTube main
+   * player, and collapse DOM duplicates that point at the same media.
+   */
+  function rankVideoCandidates(candidates, { youtube = false } = {}) {
+    const eligible = (Array.isArray(candidates) ? candidates : [])
+      .filter(
+        (item) =>
+          item &&
+          item.connected !== false &&
+          item.displayVisible !== false &&
+          Number(item.visibleArea || 0) >= 4_096,
+      );
+    const youtubeMain = youtube && eligible.some((item) => item.isMainPlayer)
+      ? eligible.filter((item) => item.isMainPlayer)
+      : eligible;
+    const sorted = [...youtubeMain].sort(
+      (a, b) =>
+        Number(!!b.isMainPlayer) - Number(!!a.isMainPlayer) ||
+        Number(!!a.paused) - Number(!!b.paused) ||
+        Number(b.visibleArea || 0) - Number(a.visibleArea || 0),
+    );
+    const seen = new Set();
+    return sorted.filter((item) => {
+      const source = String(item.currentSrc || "").trim();
+      const duration = Number.isFinite(Number(item.duration))
+        ? Math.round(Number(item.duration))
+        : 0;
+      const key = source ? `${source}\n${duration}` : `element:${item.id}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }
+
+  /**
+   * Split text into complete, ordered pages using a caller-supplied layout
+   * check. The browser uses a hidden two-line measurer; tests can use a
+   * deterministic character limit.
+   */
+  function paginateCaptionText(text, fits) {
+    const normalized = String(text || "").replace(/\s+/g, " ").trim();
+    if (!normalized) return [];
+    if (typeof fits !== "function" || fits(normalized)) return [normalized];
+    const characters = Array.from(normalized);
+    const pages = [];
+    let start = 0;
+
+    while (start < characters.length) {
+      while (characters[start] === " ") start += 1;
+      if (start >= characters.length) break;
+      let low = start + 1;
+      let high = characters.length;
+      let maximum = start;
+      while (low <= high) {
+        const middle = Math.floor((low + high) / 2);
+        const candidate = characters.slice(start, middle).join("").trim();
+        if (candidate && fits(candidate)) {
+          maximum = middle;
+          low = middle + 1;
+        } else {
+          high = middle - 1;
+        }
+      }
+      if (maximum <= start) maximum = start + 1;
+
+      let cut = maximum;
+      if (maximum < characters.length) {
+        const lowerBound = start + Math.floor((maximum - start) * 0.55);
+        for (const punctuation of [/[.!?。！？]/, /[,;:，；：]/, /\s/]) {
+          for (let index = maximum - 1; index >= lowerBound; index -= 1) {
+            if (punctuation.test(characters[index])) {
+              cut = index + 1;
+              break;
+            }
+          }
+          if (cut !== maximum) break;
+        }
+      }
+      const page = characters.slice(start, cut).join("").trim();
+      if (page) pages.push(page);
+      start = cut;
+    }
+    return pages;
+  }
+
+  function captionPageIndex({
+    pageCount,
+    mode,
+    startMs = 0,
+    endMs = 0,
+    currentMs = 0,
+    firstSeenMs = 0,
+    nowMs = Date.now(),
+    livePageMs = 2_600,
+  }) {
+    const count = Math.max(1, Math.floor(Number(pageCount) || 1));
+    if (count === 1) return 0;
+    if (mode === "live") {
+      return Math.min(
+        count - 1,
+        Math.floor(Math.max(0, Number(nowMs) - Number(firstSeenMs)) / livePageMs),
+      );
+    }
+    const duration = Math.max(1, Number(endMs) - Number(startMs));
+    const progress = clamp((Number(currentMs) - Number(startMs)) / duration, 0, 0.999999);
+    return Math.min(count - 1, Math.floor(progress * count));
+  }
+
   function formatTimestamp(ms, includeHours = true) {
     const totalMs = Math.max(0, Math.round(Number(ms) || 0));
     const hours = Math.floor(totalMs / 3_600_000);
@@ -279,6 +459,7 @@ var YTD_LIVE_CAPTIONS = (() => {
     SESSION_INDEX_KEY,
     SESSION_STORAGE_PREFIX,
     activeSegmentAt,
+    captionPageIndex,
     createSession,
     exportMarkdown,
     exportSrt,
@@ -288,10 +469,16 @@ var YTD_LIVE_CAPTIONS = (() => {
     nextOverlayWidthPreset,
     normalizeSegment,
     normalizeOverlayPreferences,
+    normalizedPageUrl,
+    pageContextKey,
+    paginateCaptionText,
     pruneSessionIndex,
+    retryWithDelays,
+    rankVideoCandidates,
     resolveOverlayPosition,
     sessionStorageKey,
     upsertSegment,
+    youtubeVideoId,
   };
 })();
 

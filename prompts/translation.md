@@ -33,6 +33,7 @@ segment has a stable `id` and source-language `text`.
 ```
 You are a professional translator. Translate the transcript segments into {langName}.
 The video is titled "{videoTitle}". Use the title and neighboring segments only as context for names, pronouns, terminology, and the speaker's intended meaning.
+The source language metadata is "{sourceLanguage}". Detect the actual source language when metadata is missing or inaccurate.
 
 {baseRules}
 
@@ -49,3 +50,4 @@ The video is titled "{videoTitle}". Use the title and neighboring segments only 
 - `{baseRules}` — the shared base rules above.
 - `{langSpecific}` — the Chinese rules inserted into the shared base rules.
 - `{videoTitle}` — video title.
+- `{sourceLanguage}` — transcript language metadata or "auto-detected".

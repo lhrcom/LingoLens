@@ -42,7 +42,7 @@ LingoLens 是基于 zarazhangrui 的 [YouTube Digest](https://github.com/zarazha
 2. 把解压后的文件夹移动到长期保留的位置。打开文件夹，找到直接包含 `manifest.json` 的那一层；Chrome 需要加载的就是这个文件夹。
 3. 在 Chrome 地址栏打开 `chrome://extensions`，开启“开发者模式”，点击“加载已解压的扩展程序”，然后选择上一步确定的文件夹。
 4. 在 Chrome 扩展菜单中固定 LingoLens，点击图标打开侧边栏，再从侧边栏打开 **Settings**。
-5. 填写你自己的 Supadata 和 DeepSeek API Key。如果需要在视频没有完整字幕轨时进行实时听写，再填写 Deepgram Key。不要把 API Key 写入 GitHub 文件、Issue、截图或聊天消息。
+5. 填写你自己的 DeepSeek API Key。只有需要为无英文字幕的视频确认生成完整转录时才填写 Supadata；需要实时听写时再填写 Deepgram。不要把 API Key 写入 GitHub 文件、Issue、截图或聊天消息。
 6. 翻译普通网页时，选中英文并点击选区附近的 **译** 按钮；需要整页双语翻译时，打开侧边栏并点击 **Translate page**。
 7. 学习 YouTube 视频时，打开带字幕的视频页面和 LingoLens 侧边栏，即可使用字幕、双语对照、概览、讲解、笔记或实时字幕。
 
@@ -52,7 +52,7 @@ LingoLens 是本地加载的扩展，不会自动更新。安装新版时，请�
 
 LingoLens 使用你自己的服务 Key：
 
-1. **Supadata API Key**，用于获取 YouTube 字幕。
+1. 可选的 **Supadata API Key**，仅在 YouTube 没有可读的英文人工或自动字幕时生成完整转录。
 2. **DeepSeek API Key**，用于网页与字幕翻译、生成概览、讲解内容和自动润色笔记。
 3. 可选的 **Deepgram API Key**，用于网页没有完整字幕轨时的实时听写。
 
@@ -98,6 +98,8 @@ API Key 和设置保存在你设备上的 Chrome 扩展本地存储中。发布�
 2. 点击 **译** 后才会把当前选区发送给 DeepSeek。页面内译文卡支持复制结果、失败重试和关闭。
 3. 打开扩展侧边栏，点击 **Translate page**，在可读的英文标题、段落、列表、引用、图注和表格单元格下方插入简体中文；可随时停止或移除。
 
+返回已经打开过的标签页时，LingoLens 会在开始整页翻译前重新检查当前页面。仍在唤醒或加载的标签页会自动重试，因此在多个网页之间切换不再需要关闭侧边栏。
+
 整页翻译会保留上下文中的 `a.shape` 等行内代码标识符、函数名以及键盘或示例输出文字。预格式化代码块会被排除，不会发送翻译。
 
 在 YouTube 页面中，网页翻译卡默认折叠，让 Digest 保持为主界面。浏览器内部页面、Chrome 应用商店、PDF 阅读器内容、跨域 iframe、Canvas 和图片文字不受支持。
@@ -115,12 +117,14 @@ API Key 和设置保存在你设备上的 Chrome 扩展本地存储中。发布�
 
 ### 任意网页视频的实时双语字幕
 
-1.2 版本为普通 HTTP 和 HTTPS 标签页增加了英语到简体中文的字幕模式。
+LingoLens 为普通 HTTP 和 HTTPS 标签页提供英语到简体中文的字幕模式。
 打开包含 HTML5 视频的页面，在侧栏中点击“Start subtitles”即可开始。
+
+在 YouTube 中，LingoLens 会自动跟随当前可见的主播放器，并忽略隐藏或预加载的重复视频元素。只有网页确实包含多个可见、可播放的视频时才提供选择。较长的双语字幕会自动分页，每次最多显示两行英文和两行中文；完整时间轴字幕随播放进度推进，实时识别字幕则按可读速度推进。
 
 - 如果页面提供完整的时间轴字幕，扩展会先读取全文，建立主题和术语上下文，
   优先翻译当前位置之后三分钟的内容，再在后台完成其余字幕。
-- YouTube 有原生字幕时仍优先通过 Supadata 获取完整字幕。
+- LingoLens 先免费读取 YouTube 英文人工字幕，其次读取英文自动字幕。它会依次尝试 timed-text、YouTube Transcript API；如果这些网络通道失败，则短暂打开并恢复 YouTube 原生的 **显示文字稿** 面板。所有免费通道都失败后，才显示预计 credits 并在用户确认后提交 Supadata AI；Deepgram 只作为实时字幕兜底。
 - 如果没有完整字幕，扩展会捕获用户选择的标签页音频，直接发送给 Deepgram
   Nova-3 实时听写，再把定稿英文连同上下文发送给 DeepSeek 翻译为简体中文。
 - 视频浮层和侧栏使用同一份中英分段。会话保存在本地，可导出为 SRT、VTT
@@ -129,13 +133,13 @@ API Key 和设置保存在你设备上的 Chrome 扩展本地存储中。发布�
   键盘聚焦后，可以调节字号、切换窄/标准/宽三档、隐藏字幕、停止会话或重置布局。
   显示偏好会在当前 Chrome profile 中跨网站复用。
 
-实时回退需要你自己的 Deepgram API 密钥，并且只能由用户点击按钮后开始。
+实时回退需要你自己的 Deepgram API 密钥，并且只能由用户点击按钮后开始。如果 Chrome 尚未为当前视频授予 `activeTab`，按提示点击一次 Chrome 工具栏上的 LingoLens 图标，待启动请求会自动继续，无需再次点击 Start subtitles。
 Chrome 内部页面、受保护的 DRM 媒体，以及部分跨域全屏播放器中的字幕浮层
 不受支持；浮层不可用时仍可在侧栏查看字幕历史。
 
 - Chrome 116 或更高版本。
 - 标准的 `youtube.com/watch` 视频页面。
-- Supadata 能够返回的原生字幕。LingoLens 会优先请求英文字幕，也可能显示其他可用的原生语言。
+- 直接从 YouTube 读取的英文字幕，人工字幕优先于自动字幕；确认后也可由 Supadata AI 按视频实际语言生成转录。
 - 原文、简体中文和双语对照字幕。
 - AI 概览、选中文本讲解、翻译和自动润色笔记。
 - 本地笔记，以及最近字幕、概览和翻译的本地缓存。
@@ -145,19 +149,19 @@ YouTube 摘要功能仍要求标准且可访问的视频页面以及原生字幕
 许多直播和没有原生字幕的视频，但私密、受保护或受访问限制的媒体可能阻止音频
 捕获或字幕浮层。目前没有测试 Firefox、Safari、移动浏览器或其他 Chromium 浏览器。
 
-LingoLens 强制使用 Supadata 的 `mode=native`，不会在没有原生字幕时请求 AI 生成转录，也不会在本地转录音频。
+LingoLens 首先读取 YouTube 英文字幕。只有没有可读字幕时，才显示预计费用并在用户确认后以 `mode=generate` 提交 Supadata。HTTP 202 会保存为异步任务并继续查询；拒绝生成或生成失败时仍可使用 Deepgram Live AI。
 
 ## Supadata 免费额度和请求成本
 
-截至 2026 年 8 月 9 日，[Supadata 价格页面](https://supadata.ai/pricing)显示免费版每月提供 **100 credits**，不需要信用卡，未使用的额度不会结转。价格可能变化，使用前请查看最新页面。
+截至 2026 年 8 月 16 日，[Supadata 价格页面](https://supadata.ai/pricing)显示免费版每月提供 **100 credits**，不需要信用卡，未使用的额度不会结转。价格可能变化，使用前请查看最新页面。
 
 [Supadata 字幕接口文档](https://docs.supadata.ai/get-transcript)说明了不同模式的计费方式：
 
 - 获取一次原生字幕消耗 **1 credit**，与视频时长无关。
-- AI 生成字幕每分钟消耗 **2 credits**。LingoLens 不会使用这条路径，因为它强制使用 `mode=native`。
+- AI 生成字幕每分钟消耗 **2 credits**。LingoLens 会先显示估算，并要求用户逐视频确认。
 - 如果没有可用原生字幕并返回 HTTP `206`，仍会消耗 **1 credit**。
 
-按照当前只获取原生字幕的方式，如果每次请求都成功，免费版每月大约可以查询 100 个视频。重试和没有字幕的查询也会消耗额度，所以实际成功数量可能更少。
+直接读取 YouTube 字幕不会消耗 Supadata credits。按文档中的生成价格计算，100 credits 大约可以生成 50 分钟视频字幕；实际计费仍以 Supadata 为准。
 
 DeepSeek 的额度与 Supadata 分开计算。DeepSeek 可能有自己的免费额度、限速或费用。LingoLens 不收款，也不转售 API 服务。建议为两个账号设置消费上限并定期查看用量。下方估算说明了当前 DeepSeek 翻译成本。
 
@@ -199,10 +203,11 @@ LingoLens 使用原生 HTML、CSS 和 JavaScript，没有构建步骤，很适�
 
 LingoLens 会直接从扩展向服务商发送请求：
 
-1. 把标准化的 YouTube 视频地址发送给 Supadata，用于获取原生字幕。
-2. 当你使用 AI 功能时，把字幕和相关视频信息发送给 DeepSeek。
-3. 翻译或讲解等功能只发送当前需要的内容，例如选中的文本和上下文，或少量字幕分段。
-4. API Key、设置、笔记和最近缓存保存在 Chrome 本地。
+1. 直接向 YouTube 请求所选英文字幕轨的 timed text。
+2. YouTube 字幕不可用且用户确认预计费用后，才把标准化视频地址发送给 Supadata 进行 AI 转录。
+3. 当你使用 AI 功能时，把字幕和相关视频信息发送给 DeepSeek。
+4. 翻译或讲解等功能只发送当前需要的内容，例如选中的文本和上下文，或少量字幕分段。
+5. API Key、设置、笔记和最近缓存保存在 Chrome 本地。
 
 LingoLens 没有账号系统、广告、分析统计或行为追踪。Supadata 和 DeepSeek 仍会按照各自的条款和隐私政策处理数据。详情请查看 [PRIVACY.md](PRIVACY.md)。
 
@@ -225,15 +230,16 @@ LingoLens 没有账号系统、广告、分析统计或行为追踪。Supadata �
 
 ### LingoLens 提示需要设置
 
-- 打开 **Settings**，保存 Supadata Key 和 DeepSeek Key。
+- 打开 **Settings** 并保存 DeepSeek Key。Supadata Key 是可选的，只在视频没有可读的 YouTube 英文字幕、且你确认使用 AI 生成字幕时需要。
 - 发布版本固定使用 DeepSeek 接口，可在设置中选择 V4 Flash 或 V4 Pro。
 - 如果设置提示旧的自定义服务已移除，请重新填写 DeepSeek Key。旧 AI Key 已安全清除，避免被错误用于 DeepSeek。
 
 ### 找不到字幕
 
-- 确认视频是公开的，并且有原生字幕。
-- 检查 Supadata Key、剩余额度、限速和账号状态。
-- 没有字幕的查询和手动重试也可能消耗额度。
+- 确认视频是公开的，并且有可读的英文人工字幕或自动字幕。
+- 如果没有英文字幕，可确认 Supadata AI 生成，或选择 **Use Live AI instead**。
+- 如果 YouTube 显示 CC 但直接字幕请求失败，LingoLens 可能短暂打开原生 **显示文字稿** 面板，复制带时间戳的文字并恢复此前的面板状态。侧边栏只显示各免费来源的安全失败摘要，不显示签名地址或会话数据。
+- 确认生成前检查 Supadata Key、剩余额度、限速和账号状态。任务一旦被接受，即使随后关闭侧边栏也可能消耗 credits。
 
 LingoLens 不会自动改用 AI 生成字幕。
 

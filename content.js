@@ -6,8 +6,7 @@
  *
  * It handles:
  * 1. Extracting video info (title, channel name) from the page
- * 2. Injecting "key moment" markers onto YouTube's progress bar
- * 3. Adding a "Digest" button to YouTube's action bar (next to Share/Save)
+ * 2. Adding a "Digest" button to YouTube's action bar (next to Share/Save)
  *
  * Think of it like a robot sitting inside the YouTube tab,
  * reading the page and making small visual changes.
@@ -30,6 +29,7 @@ let ytdDigestButton = null;
 let digestButtonObserver = null;
 let digestButtonReconcileTimer = null;
 let digestButtonResizeListenerAdded = false;
+let nativeTranscriptRequestToken = 0;
 
 // ============================================================
 // INITIALIZATION
@@ -119,7 +119,6 @@ if (document.readyState === "loading") {
 /**
  * Listen for messages from the side panel or background script.
  * When they ask for video info, we read it from the page.
- * When they send key moments, we highlight them on the progress bar.
  */
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   debugLog("[LingoLens Content] Received message:", message.action, message);
@@ -130,12 +129,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     debugLog("[LingoLens Content] Returning video info:", info);
     sendResponse(info);
     return false; // Synchronous response
-  }
-
-  if (message.action === "highlightMoments") {
-    // Key moment markers disabled — chapters are shown in the side panel only.
-    sendResponse({ success: true });
-    return false;
   }
 
   if (message.action === "getCurrentTime") {
@@ -161,6 +154,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     showNoteSavedToast(message.note);
     sendResponse({ success: true });
     return false;
+  }
+
+  if (message.action === "readNativeYouTubeTranscript") {
+    const token = ++nativeTranscriptRequestToken;
+    readNativeYouTubeTranscript(message, token)
+      .then(sendResponse)
+      .catch((error) =>
+        sendResponse({
+          success: false,
+          error: "YOUTUBE_NATIVE_PANEL_FAILED",
+          message: error?.message || "YouTube's native transcript panel could not be read.",
+        }),
+      );
+    return true;
   }
 
   // These messages belong to the dynamically injected, page-agnostic caption
@@ -718,6 +725,7 @@ function showNoteSavedToast(note) {
  * These are just sitting in the HTML — we grab them from the DOM elements.
  */
 function extractVideoInfo() {
+  const videoId = new URLSearchParams(window.location.search).get("v") || "";
   // The video title is in an h1 element inside the #title container
   const titleElement = document.querySelector(
     "h1.ytd-watch-metadata yt-formatted-string, #title h1 yt-formatted-string",
@@ -740,33 +748,12 @@ function extractVideoInfo() {
   );
 
   return {
+    videoId,
     title: titleElement?.textContent?.trim() || "",
     channelName: channelElement?.textContent?.trim() || "",
     duration: videoElement?.duration || 0,
     description: descriptionElement?.textContent?.trim() || "",
   };
-}
-
-// ============================================================
-// PROGRESS BAR KEY MOMENTS
-// ============================================================
-
-/**
- * Adds colored marker dots to YouTube's video progress bar
- * at the positions of key moments identified by the AI provider.
- *
- * How it works:
- * - YouTube's progress bar is a <div> element with a known class
- * - We calculate each moment's position as a percentage of total duration
- * - We inject small colored <div> elements at those positions
- * - The markers are absolutely positioned on top of the progress bar
- *
- * This is a "bonus feature" — it gives you a visual preview
- * of where the good stuff is in the video.
- */
-function highlightKeyMoments(moments, videoDuration) {
-  // Disabled: no timeline markers. Chapters live only in the side panel.
-  return;
 }
 
 // ============================================================
@@ -802,6 +789,482 @@ function escapeHtmlForContent(text) {
 }
 
 // ============================================================
+// NATIVE YOUTUBE TRANSCRIPT PANEL
+// ============================================================
+
+function nativeTranscriptVideoId() {
+  return new URLSearchParams(window.location.search).get("v") || "";
+}
+
+function nativeTranscriptCleanText(value) {
+  return String(value || "").replace(/\s+/g, " ").trim();
+}
+
+function nativeTranscriptVisible(element) {
+  if (!element || !element.isConnected || element.hidden) return false;
+  const style = window.getComputedStyle(element);
+  if (style.display === "none" || style.visibility === "hidden") return false;
+  const rect = element.getBoundingClientRect();
+  return rect.width > 0 && rect.height > 0;
+}
+
+function nativeTranscriptSleep(milliseconds) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+function nativeTranscriptAssertContext(expectedVideoId, token) {
+  if (
+    token !== nativeTranscriptRequestToken ||
+    nativeTranscriptVideoId() !== expectedVideoId
+  ) {
+    const error = new Error("The YouTube video changed while its transcript was loading.");
+    error.code = "VIDEO_CONTEXT_CHANGED";
+    throw error;
+  }
+}
+
+function nativeTranscriptButtonLabel(element) {
+  return nativeTranscriptCleanText(
+    element?.getAttribute?.("aria-label") ||
+      element?.getAttribute?.("title") ||
+      element?.textContent ||
+      "",
+  );
+}
+
+function nativeTranscriptFindSelectedTab() {
+  const tabs = Array.from(
+    document.querySelectorAll(
+      'ytd-engagement-panel-section-list-renderer [role="tab"][aria-selected="true"], ' +
+        "ytd-engagement-panel-section-list-renderer tp-yt-paper-tab.iron-selected, " +
+        "ytd-engagement-panel-section-list-renderer tp-yt-paper-tab[selected]",
+    ),
+  ).filter(nativeTranscriptVisible);
+  return tabs[0] || null;
+}
+
+function nativeTranscriptFindShowButton() {
+  const scoped = Array.from(
+    document.querySelectorAll(
+      'ytd-video-description-transcript-section-renderer button, ' +
+        'ytd-video-description-transcript-section-renderer yt-button-shape, ' +
+        'button[aria-label*="Show transcript" i], ' +
+        'button[aria-label*="显示文字稿"], ' +
+        'button[aria-label*="文字稿"]',
+    ),
+  );
+  const normalizedScoped = scoped.map((element) =>
+    element.matches?.("button") ? element : element.querySelector?.("button") || element,
+  );
+  const allButtons = normalizedScoped.length
+    ? normalizedScoped
+    : Array.from(document.querySelectorAll("button, yt-button-shape button"));
+  return allButtons.find((button) => {
+    const label = nativeTranscriptButtonLabel(button);
+    return /(show transcript|显示文字稿|展开文字稿|查看文字稿)/i.test(label);
+  }) || null;
+}
+
+function nativeTranscriptFindDescriptionToggle(expand) {
+  const selectors = expand
+    ? "ytd-watch-metadata #expand, ytd-text-inline-expander #expand, #description #expand"
+    : "ytd-watch-metadata #collapse, ytd-text-inline-expander #collapse, #description #collapse";
+  const direct = Array.from(document.querySelectorAll(selectors)).find(
+    nativeTranscriptVisible,
+  );
+  if (direct) return direct.matches?.("button")
+    ? direct
+    : direct.querySelector?.("button") || direct;
+  const pattern = expand ? /^(\.\.\.)?more$|显示更多|展开/i : /show less|收起|显示较少/i;
+  return Array.from(document.querySelectorAll("button")).find((button) =>
+    nativeTranscriptVisible(button) && pattern.test(nativeTranscriptButtonLabel(button)),
+  ) || null;
+}
+
+function nativeTranscriptFindRoot() {
+  const rows = Array.from(
+    document.querySelectorAll(
+      "ytd-transcript-segment-renderer, transcript-segment-view-model",
+    ),
+  ).find(nativeTranscriptVisible);
+  if (rows) {
+    return rows.closest(
+      "ytd-engagement-panel-section-list-renderer, ytd-transcript-renderer, #secondary",
+    ) || rows.parentElement;
+  }
+  const selectedTranscriptTab = Array.from(
+    document.querySelectorAll('[role="tab"][aria-selected="true"], tp-yt-paper-tab.iron-selected'),
+  ).find((tab) => /transcript|文字稿/i.test(nativeTranscriptButtonLabel(tab)));
+  if (selectedTranscriptTab) {
+    return selectedTranscriptTab.closest(
+      "ytd-engagement-panel-section-list-renderer, #secondary",
+    );
+  }
+  return Array.from(
+    document.querySelectorAll("ytd-engagement-panel-section-list-renderer"),
+  ).find((panel) =>
+    /transcript/i.test(panel.getAttribute("target-id") || "") &&
+    nativeTranscriptVisible(panel),
+  ) || null;
+}
+
+function nativeTranscriptRendererFromData(root) {
+  const candidates = [];
+  try {
+    candidates.push(root?.data, root?.__data?.data, root?.__data);
+  } catch (_error) {
+    // Custom-element state may be isolated from content scripts.
+  }
+  const stack = candidates.filter(Boolean);
+  const seen = new Set();
+  while (stack.length && seen.size < 2000) {
+    const value = stack.pop();
+    if (!value || typeof value !== "object" || seen.has(value)) continue;
+    seen.add(value);
+    if (value.transcriptSegmentRenderer) return value.transcriptSegmentRenderer;
+    if (value.transcriptCueRenderer) return value.transcriptCueRenderer;
+    const values = Array.isArray(value) ? value : Object.values(value);
+    for (const item of values) stack.push(item);
+  }
+  return null;
+}
+
+function nativeTranscriptTextFromRenderer(renderer) {
+  const value = renderer?.snippet || renderer?.cue || renderer?.text;
+  if (typeof value === "string") return nativeTranscriptCleanText(value);
+  if (typeof value?.simpleText === "string") {
+    return nativeTranscriptCleanText(value.simpleText);
+  }
+  if (Array.isArray(value?.runs)) {
+    return nativeTranscriptCleanText(value.runs.map((run) => run?.text || "").join(""));
+  }
+  return "";
+}
+
+function nativeTranscriptVisibleLines(element) {
+  return String(element?.innerText || "")
+    .split(/\r?\n/)
+    .map(nativeTranscriptCleanText)
+    .filter(Boolean);
+}
+
+function nativeTranscriptIsAuxiliaryTimestampText(value) {
+  const text = nativeTranscriptCleanText(value);
+  if (!/(?:hours?|minutes?|seconds?|小时|分钟|秒)/i.test(text)) return false;
+  return /^(?:\d+\s*(?:hours?|minutes?|seconds?|小时|分钟|秒)(?:\s*[,，]\s*|\s*))+$/i.test(
+    text,
+  );
+}
+
+function nativeTranscriptRowFromElement(element) {
+  const renderer = nativeTranscriptRendererFromData(element);
+  const textElement = element.querySelector?.(
+    "#segment-text, .segment-text, yt-formatted-string.segment-text, " +
+      ':scope > [role="text"], [class*="segment-text" i], [class*="cue-text" i]',
+  );
+  const timestampElement = element.querySelector?.(
+    '#segment-timestamp, .segment-timestamp, ' +
+      '.ytwTranscriptSegmentViewModelTimestamp, [class*="timestamp" i]',
+  );
+  const visibleLines = nativeTranscriptVisibleLines(element);
+  const fallbackTimestamp = visibleLines.find((line) =>
+    /^\d{1,3}:\d{2}(?::\d{2})?$/.test(line),
+  ) || "";
+  const timestamp = nativeTranscriptCleanText(
+    timestampElement?.textContent || fallbackTimestamp,
+  );
+  let text = nativeTranscriptTextFromRenderer(renderer) ||
+    nativeTranscriptCleanText(textElement?.textContent || "");
+  if (!text) {
+    const contentLines = visibleLines.filter(
+      (line) => line !== timestamp && !nativeTranscriptIsAuxiliaryTimestampText(line),
+    );
+    text = nativeTranscriptCleanText(contentLines.join(" "));
+  }
+  if (!text) {
+    const combined = nativeTranscriptCleanText(element.textContent || "");
+    text = timestamp && combined.startsWith(timestamp)
+      ? nativeTranscriptCleanText(combined.slice(timestamp.length))
+      : combined;
+  }
+  const attributeNumber = (...names) => {
+    for (const name of names) {
+      const raw = element.getAttribute?.(name);
+      if (raw !== null && raw !== "" && Number.isFinite(Number(raw))) return Number(raw);
+    }
+    return null;
+  };
+  const startRaw =
+    renderer?.startMs ??
+      renderer?.startOffsetMs ??
+      renderer?.startTimeMs ??
+      attributeNumber("data-start-ms", "start-ms");
+  const endRaw =
+    renderer?.endMs ??
+      renderer?.endTimeMs ??
+      attributeNumber("data-end-ms", "end-ms");
+  const durationRaw =
+    renderer?.durationMs ??
+      renderer?.duration ??
+      attributeNumber("data-duration-ms", "duration-ms");
+  const startMs = startRaw === null || startRaw === undefined ? null : Number(startRaw);
+  const endMs = endRaw === null || endRaw === undefined ? null : Number(endRaw);
+  const durationMs = durationRaw === null || durationRaw === undefined
+    ? null
+    : Number(durationRaw);
+  return {
+    text,
+    timestamp,
+    startMs: Number.isFinite(startMs) && startMs >= 0 ? startMs : null,
+    endMs: Number.isFinite(endMs) && endMs > 0 ? endMs : null,
+    durationMs: Number.isFinite(durationMs) && durationMs > 0 ? durationMs : null,
+  };
+}
+
+function nativeTranscriptRows(root) {
+  if (!root) return [];
+  let elements = Array.from(
+    root.querySelectorAll(
+      "ytd-transcript-segment-renderer, transcript-segment-view-model, " +
+        '[data-start-ms][class*="segment"]',
+    ),
+  );
+  if (!elements.length) {
+    const timestamps = Array.from(
+      root.querySelectorAll(
+        '.segment-timestamp, #segment-timestamp, [class*="timestamp"]',
+      ),
+    );
+    elements = timestamps
+      .map((timestamp) =>
+        timestamp.closest(
+          "ytd-transcript-segment-renderer, transcript-segment-view-model, " +
+            '[role="button"], [class*="segment"]',
+        ),
+      )
+      .filter(Boolean);
+  }
+  return elements.map(nativeTranscriptRowFromElement).filter((row) => row.text);
+}
+
+function nativeTranscriptFindScroller(root) {
+  if (!root) return null;
+  const candidates = [root, ...root.querySelectorAll("*")].filter((element) => {
+    if (!(element instanceof HTMLElement)) return false;
+    const style = window.getComputedStyle(element);
+    return (
+      /(auto|scroll)/.test(style.overflowY) &&
+      element.clientHeight >= 80 &&
+      element.scrollHeight > element.clientHeight + 20
+    );
+  });
+  return candidates.sort((a, b) => b.scrollHeight - a.scrollHeight)[0] || null;
+}
+
+async function nativeTranscriptSelectEnglish(root, preferredTracks, expectedVideoId, token) {
+  const ordered = (Array.isArray(preferredTracks) ? preferredTracks : [])
+    .filter((track) => /^en(?:-|$)/i.test(track?.languageCode || ""))
+    .sort((a, b) => Number(a.kind === "asr") - Number(b.kind === "asr"));
+  const menuButtons = Array.from(
+    root?.querySelectorAll?.(
+      "ytd-transcript-footer-renderer button, #language-menu-button, " +
+        'button[aria-label*="language" i], button[aria-haspopup="menu"]',
+    ) || [],
+  ).filter(nativeTranscriptVisible);
+  const currentButton = menuButtons.find((button) => {
+    const label = nativeTranscriptButtonLabel(button);
+    return ordered.some((track) =>
+      nativeTranscriptCleanText(track.name).toLowerCase() === label.toLowerCase(),
+    ) || /english|auto-generated/i.test(label);
+  });
+  let selectedLabel = nativeTranscriptButtonLabel(currentButton);
+  const preferred = ordered[0] || null;
+  if (
+    currentButton &&
+    preferred &&
+    nativeTranscriptCleanText(preferred.name).toLowerCase() !== selectedLabel.toLowerCase()
+  ) {
+    currentButton.click();
+    await nativeTranscriptSleep(200);
+    nativeTranscriptAssertContext(expectedVideoId, token);
+    const choices = Array.from(
+      document.querySelectorAll(
+        'tp-yt-paper-item, ytd-menu-service-item-renderer, [role="menuitemradio"], ' +
+          "yt-list-item-view-model",
+      ),
+    ).filter(nativeTranscriptVisible);
+    let choice = null;
+    for (const track of ordered) {
+      const expected = nativeTranscriptCleanText(track.name).toLowerCase();
+      choice = choices.find((item) =>
+        nativeTranscriptButtonLabel(item).toLowerCase() === expected,
+      );
+      if (choice) break;
+    }
+    if (choice) {
+      selectedLabel = nativeTranscriptButtonLabel(choice);
+      choice.click();
+      await nativeTranscriptSleep(500);
+      nativeTranscriptAssertContext(expectedVideoId, token);
+    } else {
+      document.body.click();
+    }
+  }
+  const selectedTrack = ordered.find((track) =>
+    nativeTranscriptCleanText(track.name).toLowerCase() === selectedLabel.toLowerCase(),
+  ) || preferred;
+  return {
+    language: selectedTrack?.languageCode || "en",
+    source: selectedTrack?.kind === "asr" || /auto-generated/i.test(selectedLabel)
+      ? "youtube-auto"
+      : "youtube-manual",
+    captionTrackName: selectedLabel || selectedTrack?.name || "",
+  };
+}
+
+async function nativeTranscriptCollectRows(root, expectedVideoId, token) {
+  const scroller = nativeTranscriptFindScroller(root);
+  const originalScrollTop = scroller?.scrollTop || 0;
+  const collected = new Map();
+  let stableBottomPasses = 0;
+  try {
+    if (scroller) {
+      scroller.scrollTop = 0;
+      scroller.dispatchEvent(new Event("scroll", { bubbles: true }));
+      await nativeTranscriptSleep(120);
+    }
+    for (let step = 0; step < 180; step += 1) {
+      nativeTranscriptAssertContext(expectedVideoId, token);
+      for (const row of nativeTranscriptRows(root)) {
+        const key = `${row.startMs ?? row.timestamp}:${row.text}`;
+        if (!collected.has(key)) collected.set(key, row);
+      }
+      if (!scroller) break;
+      const atBottom =
+        scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 4;
+      if (atBottom) {
+        stableBottomPasses += 1;
+        if (stableBottomPasses >= 3) break;
+      } else {
+        stableBottomPasses = 0;
+        const next = Math.min(
+          scroller.scrollHeight - scroller.clientHeight,
+          scroller.scrollTop + Math.max(320, Math.floor(scroller.clientHeight * 0.8)),
+        );
+        scroller.scrollTop = next;
+        scroller.dispatchEvent(new Event("scroll", { bubbles: true }));
+      }
+      await nativeTranscriptSleep(120);
+    }
+  } finally {
+    if (scroller?.isConnected) {
+      scroller.scrollTop = originalScrollTop;
+      scroller.dispatchEvent(new Event("scroll", { bubbles: true }));
+    }
+  }
+  return Array.from(collected.values());
+}
+
+async function readNativeYouTubeTranscript(message, token) {
+  const expectedVideoId = String(message.videoId || "");
+  nativeTranscriptAssertContext(expectedVideoId, token);
+  const previousSelectedTab = nativeTranscriptFindSelectedTab();
+  const previousSelectedLabel = nativeTranscriptButtonLabel(previousSelectedTab);
+  const transcriptWasSelected = /transcript|文字稿/i.test(previousSelectedLabel);
+  let openedByExtension = false;
+  let descriptionExpandedByExtension = false;
+  let root = nativeTranscriptFindRoot();
+
+  try {
+    if (!transcriptWasSelected || !nativeTranscriptRows(root).length) {
+      const showButton = nativeTranscriptFindShowButton();
+      if (!showButton) {
+        return {
+          success: false,
+          error: "YOUTUBE_NATIVE_PANEL_BUTTON_NOT_FOUND",
+        };
+      }
+      let effectiveShowButton = showButton;
+      if (!nativeTranscriptVisible(effectiveShowButton)) {
+        const expandButton = nativeTranscriptFindDescriptionToggle(true);
+        if (expandButton) {
+          expandButton.click();
+          descriptionExpandedByExtension = true;
+          await nativeTranscriptSleep(200);
+          nativeTranscriptAssertContext(expectedVideoId, token);
+          effectiveShowButton = nativeTranscriptFindShowButton() || effectiveShowButton;
+        }
+      }
+      effectiveShowButton.click();
+      openedByExtension = !transcriptWasSelected;
+      const deadline = Date.now() + 15_000;
+      do {
+        await nativeTranscriptSleep(150);
+        nativeTranscriptAssertContext(expectedVideoId, token);
+        root = nativeTranscriptFindRoot();
+        if (nativeTranscriptRows(root).length) break;
+      } while (Date.now() < deadline);
+    }
+
+    nativeTranscriptAssertContext(expectedVideoId, token);
+    root = nativeTranscriptFindRoot();
+    if (!root || !nativeTranscriptRows(root).length) {
+      return {
+        success: false,
+        error: "YOUTUBE_NATIVE_PANEL_TIMEOUT",
+      };
+    }
+    const language = await nativeTranscriptSelectEnglish(
+      root,
+      message.preferredTracks,
+      expectedVideoId,
+      token,
+    );
+    root = nativeTranscriptFindRoot() || root;
+    const rows = await nativeTranscriptCollectRows(root, expectedVideoId, token);
+    if (!rows.length) {
+      return { success: false, error: "YOUTUBE_NATIVE_PANEL_EMPTY" };
+    }
+    return {
+      success: true,
+      rows,
+      ...language,
+      openedByExtension,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: error?.code || "YOUTUBE_NATIVE_PANEL_FAILED",
+      message: error?.message || "YouTube's native transcript panel could not be read.",
+    };
+  } finally {
+    if (openedByExtension && token === nativeTranscriptRequestToken) {
+      if (previousSelectedTab?.isConnected && previousSelectedLabel) {
+        previousSelectedTab.click();
+      } else {
+        const currentRoot = nativeTranscriptFindRoot();
+        const replacementTab = Array.from(
+          currentRoot?.querySelectorAll?.('[role="tab"], tp-yt-paper-tab') || [],
+        ).find((tab) =>
+          nativeTranscriptButtonLabel(tab) === previousSelectedLabel,
+        );
+        if (replacementTab) {
+          replacementTab.click();
+        } else {
+          const closeButton = Array.from(
+            currentRoot?.querySelectorAll?.("button") || [],
+          ).find((button) => /^(close|关闭)$/i.test(nativeTranscriptButtonLabel(button)));
+          closeButton?.click();
+        }
+      }
+    }
+    if (descriptionExpandedByExtension && token === nativeTranscriptRequestToken) {
+      nativeTranscriptFindDescriptionToggle(false)?.click();
+    }
+  }
+}
+
+// ============================================================
 // PAGE NAVIGATION DETECTION
 // ============================================================
 
@@ -816,10 +1279,7 @@ function escapeHtmlForContent(text) {
  * we clean up old markers and re-inject the button.
  */
 document.addEventListener("yt-navigate-finish", () => {
-  // Clean up old key moment markers when navigating to a new video
-  const existingMarkers = document.querySelectorAll(".ytd-key-moment-markers");
-  existingMarkers.forEach((m) => m.remove());
-
+  nativeTranscriptRequestToken += 1;
   // Remove old buttons (they will be re-injected for the new video)
   document
     .querySelectorAll("#ytd-digest-button")

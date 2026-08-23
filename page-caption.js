@@ -8,6 +8,7 @@
   globalThis.__YTD_PAGE_CAPTIONS__ = true;
 
   let selectedVideoId = "";
+  let selectedPageContextKey = "";
   let session = null;
   let hidden = false;
   let host = null;
@@ -18,6 +19,8 @@
   let preferencesLoaded = false;
   let positionFrame = null;
   let dragState = null;
+  let captionPageCache = new Map();
+  const livePageState = new Map();
 
   function videoId(video, index) {
     if (!video.dataset.ytdCaptionVideoId) {
@@ -39,40 +42,57 @@
     return Math.round(width * height);
   }
 
+  function isYoutubePage() {
+    return /(^|\.)youtube\.com$/i.test(location.hostname);
+  }
+
+  function rankedVideos() {
+    const candidates = [...document.querySelectorAll("video")].map(
+      (video, index) => {
+        const style = getComputedStyle(video);
+        const area = visibleArea(video);
+        const isMainPlayer =
+          video.matches("video.html5-main-video") &&
+          !!video.closest("#movie_player");
+        return {
+          element: video,
+          id: videoId(video, index),
+          label:
+            video.getAttribute("aria-label") ||
+            video.getAttribute("title") ||
+            (isMainPlayer ? "YouTube player" : video.paused ? "Visible video" : "Playing video"),
+          currentTime: Number(video.currentTime || 0),
+          duration: Number.isFinite(video.duration) ? video.duration : 0,
+          paused: video.paused,
+          muted: video.muted || video.volume === 0,
+          visibleArea: area,
+          connected: video.isConnected,
+          displayVisible:
+            style.display !== "none" &&
+            style.visibility !== "hidden" &&
+            Number(style.opacity || 1) > 0 &&
+            area > 0,
+          isMainPlayer,
+          isPrimary: isMainPlayer,
+          currentSrc: video.currentSrc || video.src || "",
+        };
+      },
+    );
+    return YTD_LIVE_CAPTIONS.rankVideoCandidates(candidates, {
+      youtube: isYoutubePage(),
+    });
+  }
+
   function listVideos() {
-    return [...document.querySelectorAll("video")]
-      .map((video, index) => ({
-        id: videoId(video, index),
-        label:
-          video.getAttribute("aria-label") ||
-          video.getAttribute("title") ||
-          `Video ${index + 1}`,
-        currentTime: Number(video.currentTime || 0),
-        duration: Number.isFinite(video.duration) ? video.duration : 0,
-        paused: video.paused,
-        muted: video.muted || video.volume === 0,
-        visibleArea: visibleArea(video),
-      }))
-      .sort(
-        (a, b) =>
-          Number(a.paused) - Number(b.paused) ||
-          b.visibleArea - a.visibleArea,
-      );
+    return rankedVideos().map(({ element: _element, currentSrc: _currentSrc, ...video }) => video);
   }
 
   function selectedVideo() {
-    const videos = [...document.querySelectorAll("video")];
-    return (
-      videos.find((video) => video.dataset.ytdCaptionVideoId === selectedVideoId) ||
-      videos
-        .map((video, index) => ({ video, id: videoId(video, index) }))
-        .sort(
-          (a, b) =>
-            Number(a.video.paused) - Number(b.video.paused) ||
-            visibleArea(b.video) - visibleArea(a.video),
-        )[0]?.video ||
-      null
-    );
+    const candidates = rankedVideos();
+    const selected =
+      candidates.find((item) => item.id === selectedVideoId) || candidates[0];
+    if (selected && selected.id !== selectedVideoId) selectedVideoId = selected.id;
+    return selected?.element || null;
   }
 
   function cueText(cue) {
@@ -179,6 +199,7 @@
     wrap.style.setProperty("--caption-font-scale", overlayPreferences.fontScale);
     wrap.style.setProperty("--caption-max-width", `${widthRatio * 100}vw`);
     wrap.style.setProperty("--caption-max-pixels", `${widthPixels}px`);
+    captionPageCache = new Map();
     updateOverlayControls();
     scheduleOverlayPosition();
     if (persist) void persistOverlayPreferences();
@@ -272,7 +293,8 @@
         }
         .caption {
           display: none; position: relative; box-sizing: border-box;
-          width: max-content; max-width: 100%; padding: 9px 14px 10px;
+          width: min(var(--caption-max-pixels), var(--caption-max-width), calc(100vw - 16px));
+          max-width: 100%; padding: 9px 14px 10px;
           border-radius: 10px; background: rgba(12, 12, 14, .82);
           box-shadow: 0 6px 24px rgba(0,0,0,.32); backdrop-filter: blur(7px);
           cursor: grab; touch-action: none;
@@ -280,7 +302,11 @@
         .caption.visible { display: block; }
         .caption.dragging { cursor: grabbing; user-select: none; }
         .caption:focus-visible { outline: 2px solid #ffe0a8; outline-offset: 3px; }
-        .english, .chinese { max-width: 100%; overflow-wrap: anywhere; white-space: normal; }
+        .english, .chinese {
+          display: -webkit-box; max-width: 100%; overflow: hidden;
+          overflow-wrap: anywhere; white-space: normal;
+          -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+        }
         .english { font-size: calc(18px * var(--caption-font-scale)); line-height: 1.3; font-weight: 650;
           text-shadow: 0 1px 3px #000; }
         .english.interim { opacity: .68; font-style: italic; }
@@ -289,6 +315,11 @@
           font-weight: 650; text-shadow: 0 1px 3px #000; }
         .status { margin-top: 3px; color: #c7c7cb; font-size: 10px; line-height: 1.25; }
         .status[hidden] { display: none; }
+        .measure {
+          position: absolute; left: -100000px; top: 0; visibility: hidden;
+          display: block; width: calc(100% - 28px); max-width: none;
+          overflow: visible; -webkit-line-clamp: unset; pointer-events: none;
+        }
         .tools {
           position: absolute; right: 4px; bottom: calc(100% - 2px); display: flex; gap: 3px;
           padding: 3px; border-radius: 9px; background: rgba(12,12,14,.88);
@@ -327,6 +358,8 @@
           <div class="english"></div>
           <div class="chinese"></div>
           <div class="status" hidden></div>
+          <div class="measure english english-measure" aria-hidden="true"></div>
+          <div class="measure chinese chinese-measure" aria-hidden="true"></div>
         </div>
         <button class="restore" type="button">Show subtitles</button>
       </div>`;
@@ -384,6 +417,50 @@
     );
   }
 
+  function textFitsTwoLines(text, language) {
+    if (!host?.isConnected) return true;
+    const root = host.shadowRoot;
+    const measure = root.querySelector(`.${language}-measure`);
+    measure.textContent = text;
+    const lineHeight = Number.parseFloat(getComputedStyle(measure).lineHeight) || 24;
+    return measure.scrollHeight <= lineHeight * 2 + 1;
+  }
+
+  function pagesForSegment(segment) {
+    const cacheKey = [
+      segment.id,
+      segment.sourceText || "",
+      segment.translationText || "",
+      overlayPreferences.fontScale,
+      overlayPreferences.widthPreset,
+      innerWidth,
+    ].join("\u0000");
+    const cached = captionPageCache.get(cacheKey);
+    if (cached) return cached;
+    const pages = {
+      english: YTD_LIVE_CAPTIONS.paginateCaptionText(
+        segment.sourceText,
+        (text) => textFitsTwoLines(text, "english"),
+      ),
+      chinese: YTD_LIVE_CAPTIONS.paginateCaptionText(
+        segment.translationText,
+        (text) => textFitsTwoLines(text, "chinese"),
+      ),
+    };
+    captionPageCache.clear();
+    captionPageCache.set(cacheKey, pages);
+    return pages;
+  }
+
+  function alignedPage(pages, pageIndex, pageCount) {
+    if (!pages.length) return "";
+    const alignedIndex = Math.min(
+      pages.length - 1,
+      Math.floor((pageIndex * pages.length) / pageCount),
+    );
+    return pages[alignedIndex] || "";
+  }
+
   function render() {
     ensureOverlay();
     const root = host.shadowRoot;
@@ -393,12 +470,29 @@
     caption.classList.toggle("visible", !!session && !hidden && !!segment);
     restore.classList.toggle("visible", !!session && hidden);
     if (!segment) return;
-    englishLine.textContent = segment.sourceText || "";
+    const pages = pagesForSegment(segment);
+    const pageCount = Math.max(1, pages.english.length, pages.chinese.length);
+    const videoTimeMs = Number(selectedVideo()?.currentTime || 0) * 1000;
+    let liveState = livePageState.get(segment.id);
+    if (!liveState) {
+      liveState = { firstSeenMs: Date.now() };
+      livePageState.set(segment.id, liveState);
+    }
+    const pageIndex = YTD_LIVE_CAPTIONS.captionPageIndex({
+      pageCount,
+      mode: session.mode,
+      startMs: segment.startMs,
+      endMs: segment.endMs,
+      currentMs: videoTimeMs,
+      firstSeenMs: liveState.firstSeenMs,
+      nowMs: Date.now(),
+    });
+    englishLine.textContent = alignedPage(pages.english, pageIndex, pageCount);
     englishLine.classList.toggle(
       "interim",
       segment.recognitionState === "interim",
     );
-    chineseLine.textContent = segment.translationText || "";
+    chineseLine.textContent = alignedPage(pages.chinese, pageIndex, pageCount);
     let statusText = "";
     if (
       segment.translationState === "streaming" ||
@@ -418,12 +512,22 @@
   }
 
   function setSession(snapshot) {
+    if (
+      snapshot &&
+      YTD_LIVE_CAPTIONS.pageContextKey("page", snapshot.url) !==
+        YTD_LIVE_CAPTIONS.pageContextKey("page", location.href)
+    ) {
+      return false;
+    }
     session = snapshot
       ? { ...snapshot, segments: [...(snapshot.segments || [])] }
       : null;
     selectedVideoId = snapshot?.videoId || selectedVideoId;
+    captionPageCache.clear();
+    livePageState.clear();
     hidden = false;
     render();
+    return true;
   }
 
   function upsertSegment(segment) {
@@ -432,6 +536,7 @@
     if (index === -1) session.segments.push(segment);
     else session.segments[index] = { ...session.segments[index], ...segment };
     session.segments.sort((a, b) => a.startMs - b.startMs);
+    captionPageCache.clear();
     render();
   }
 
@@ -440,11 +545,19 @@
     (document.fullscreenElement || document.documentElement).appendChild(host);
     scheduleOverlayPosition();
   });
-  window.addEventListener("resize", scheduleOverlayPosition);
+  window.addEventListener("resize", () => {
+    captionPageCache.clear();
+    scheduleOverlayPosition();
+  });
   document.addEventListener(
     "seeking",
     (event) => {
       if (event.target !== selectedVideo()) return;
+      // A seek starts a new playback position. Do not reuse pagination state
+      // from the cue that was visible before the jump.
+      livePageState.clear();
+      captionPageCache.clear();
+      render();
       chrome.runtime
         .sendMessage({
           action: "captionPlaybackPositionChanged",
@@ -458,7 +571,20 @@
 
   async function probePage(message) {
     const videos = listVideos();
-    selectedVideoId = message.videoId || selectedVideoId || videos[0]?.id || "";
+    const pageContextKey = YTD_LIVE_CAPTIONS.pageContextKey("page", location.href);
+    if (message.expectedPageContextKey && message.expectedPageContextKey !== pageContextKey) {
+      return { success: false, error: "The page video changed during inspection." };
+    }
+    if (pageContextKey !== selectedPageContextKey) {
+      selectedPageContextKey = pageContextKey;
+      selectedVideoId = "";
+    }
+    const requestedVideoExists = videos.some((item) => item.id === message.videoId);
+    selectedVideoId =
+      (requestedVideoExists ? message.videoId : "") ||
+      (videos.some((item) => item.id === selectedVideoId) ? selectedVideoId : "") ||
+      videos[0]?.id ||
+      "";
     const video = selectedVideo();
     let track = readTextTracks(video);
     // Setting a disabled TextTrack to hidden starts loading it. Give the
@@ -472,8 +598,11 @@
       page: {
         title: document.title,
         url: location.href,
+        pageContextKey,
         videos,
         selectedVideoId,
+        selectedVideoIsPrimary:
+          videos.find((item) => item.id === selectedVideoId)?.isPrimary || false,
         currentTime: Number(video?.currentTime || 0),
         multipleAudibleVideos:
           videos.filter((item) => !item.paused && !item.muted).length > 1,
@@ -488,16 +617,30 @@
       return true;
     }
     if (message.action === "captionSessionSnapshot") {
-      setSession(message.session);
-      sendResponse({ success: true });
+      const accepted = setSession(message.session);
+      sendResponse({ success: accepted, ignored: !accepted });
       return false;
     }
     if (message.action === "captionSegmentUpsert") {
+      if (
+        !session ||
+        (message.sessionId && message.sessionId !== session.id) ||
+        (message.sessionUrl &&
+          YTD_LIVE_CAPTIONS.pageContextKey("page", message.sessionUrl) !==
+            YTD_LIVE_CAPTIONS.pageContextKey("page", location.href))
+      ) {
+        sendResponse({ success: false, ignored: true });
+        return false;
+      }
       upsertSegment(message.segment);
       sendResponse({ success: true });
       return false;
     }
     if (message.action === "captionSessionStopped") {
+      if (session && message.session?.id && message.session.id !== session.id) {
+        sendResponse({ success: false, ignored: true });
+        return false;
+      }
       session = null;
       render();
       sendResponse({ success: true });

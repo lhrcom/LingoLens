@@ -42,7 +42,7 @@ Never paste an API key into an AI chat, source file, screenshot, or public messa
 2. Move the extracted folder to a permanent location. Open it and locate the folder that directly contains `manifest.json`; this is the folder Chrome must load.
 3. In Chrome, open `chrome://extensions`, turn on **Developer mode**, click **Load unpacked**, and select that exact folder.
 4. Pin LingoLens from Chrome's Extensions menu, click its icon, and open **Settings** from the side panel.
-5. Enter your own Supadata and DeepSeek API keys. Add a Deepgram key only if you want live transcription when a video has no complete subtitle track. Do not put API keys in GitHub files, issues, screenshots, or chat messages.
+5. Enter your own DeepSeek API key. Add Supadata only if you want confirmed full-transcript generation for videos without English captions, and add Deepgram only if you want live transcription. Do not put API keys in GitHub files, issues, screenshots, or chat messages.
 6. To translate a normal web page, select English text and click the nearby **译** button, or open the side panel and choose **Translate page** for full-page bilingual translation.
 7. To study a YouTube video, open a watch page with captions, open the LingoLens side panel, and use the transcript, bilingual view, overview, explanations, notes, or live subtitles.
 
@@ -52,7 +52,7 @@ LingoLens is loaded locally and does not update automatically. To install a newe
 
 LingoLens uses keys under your own provider accounts:
 
-1. A **Supadata API key** to retrieve YouTube transcripts.
+1. An optional **Supadata API key** to generate a full transcript only when YouTube has no readable English manual or auto-generated captions.
 2. A **DeepSeek API key** for web and subtitle translation, overviews, explanations, and automatic note polishing.
 3. An optional **Deepgram API key** for live transcription when a page has no complete subtitle track.
 
@@ -98,6 +98,8 @@ Keys and settings are stored in Chrome's local extension storage on your device.
 2. Click **译** to send only that selection to DeepSeek. The on-page translation card lets you copy the result, retry a failure, or close the card.
 3. Open the extension side panel and click **Translate page** to insert Simplified Chinese below readable English headings, paragraphs, lists, quotes, captions, and table cells. Use **Stop** or **Remove** at any time.
 
+When you return to an already-open tab, LingoLens rechecks that page before a full-page translation starts. Tabs that are still waking or loading are retried automatically, so switching between pages does not require closing the side panel.
+
 Full-page translation keeps inline code identifiers such as `a.shape`, function names, and keyboard or sample-output terms in their surrounding sentence. Preformatted code blocks are excluded and are not sent for translation.
 
 On YouTube, the web translation card stays collapsed by default so the Digest remains primary. Browser pages, the Chrome Web Store, PDF viewer content, cross-origin frames, canvas text, and image text are not supported.
@@ -115,14 +117,20 @@ On YouTube, the web translation card stays collapsed by default so the Digest re
 
 ### Live bilingual subtitles on web videos
 
-Version 1.2 adds an English to Simplified Chinese subtitle mode for normal HTTP
+LingoLens includes an English to Simplified Chinese subtitle mode for normal HTTP
 and HTTPS tabs. Open a page with an HTML5 video, open the side panel, and choose
 **Start subtitles**.
+
+On YouTube, LingoLens automatically follows the visible main player and ignores
+hidden or preloaded duplicate video elements. On genuine multi-video pages, only
+visible playable videos are offered. Long bilingual captions are paged with at
+most two English lines and two Chinese lines at once; complete timed subtitles
+advance with playback, while live recognition advances at a readable pace.
 
 - If a complete timed subtitle track is available, LingoLens reads it
   first, builds whole-transcript topic and terminology context, translates the
   current three-minute window first, and completes the rest in the background.
-- YouTube native captions continue to come from Supadata when available.
+- LingoLens first reads YouTube English manual captions, then English auto-generated captions, without spending Supadata credits. It tries timed-text and YouTube's Transcript API, then briefly opens and restores YouTube's native **Show transcript** panel when those network paths fail. Only after every free path fails does it ask before submitting a paid Supadata AI generation job. Deepgram remains the live-only fallback.
 - If no complete subtitle track is available, the extension captures audio from
   the selected tab and streams it directly to Deepgram Nova-3. Final English
   utterances are sent to DeepSeek for contextual Simplified Chinese translation.
@@ -133,38 +141,39 @@ and HTTPS tabs. Open a page with an HTML5 video, open the side panel, and choose
   hide it, stop the session, or reset the layout. Display preferences are reused
   across websites in the current Chrome profile.
 
-Live fallback requires your own Deepgram API key. Starting capture always
+Live fallback requires your own Deepgram API key. If Chrome has not granted `activeTab` for the video, click the LingoLens toolbar icon once when prompted; the pending subtitle request then starts automatically. Starting capture always
 requires a user click. Chrome internal pages, protected DRM media, and overlay
 placement inside some cross-origin fullscreen players are not supported. The
 side-panel history remains available when an overlay cannot be placed.
 
 - Google Chrome 116 or newer, using the Side Panel API.
 - Standard `youtube.com/watch` video pages.
-- Native subtitle tracks returned by Supadata. LingoLens prefers English when available, but may show another native language.
+- English subtitle tracks read directly from YouTube, with manual captions preferred over auto-generated captions; Supadata AI can generate a transcript in the video's actual language after confirmation.
 - Original, Simplified Chinese, and aligned bilingual transcript views.
 - AI overviews, selected-text explanations, translation, and automatic note polishing.
 - Local notes and a local cache for recent transcript and digest results.
 - DeepSeek V4 Flash or V4 Pro for all published AI features. Other providers require a local code adaptation.
 
 YouTube study features still require a standard accessible watch page and a
-native transcript. Live caption fallback can handle many streams and videos
-without native subtitles, but private, protected, or access-restricted media
-may block capture or overlays. Firefox, Safari, mobile browsers, and other
-Chromium browsers are not currently tested or supported.
+complete transcript from YouTube captions or confirmed Supadata AI generation.
+Deepgram Live AI can handle many streams and videos without complete subtitles,
+but it provides only a live session rather than a full-video transcript. Private,
+protected, or access-restricted media may block capture or overlays. Firefox,
+Safari, mobile browsers, and other Chromium browsers are not currently tested.
 
-LingoLens forces Supadata's `mode=native`. It does not request AI-generated transcripts or perform local audio transcription when native captions are unavailable.
+LingoLens reads YouTube English captions first. Only when none can be read, and only after showing an estimated credit cost and receiving confirmation, it submits Supadata with `mode=generate`. A 202 response is saved and polled as an asynchronous job. Deepgram Live AI remains available when generation is declined or fails.
 
 ## Supadata free tier and request costs
 
-Current as of August 9, 2026, the [Supadata pricing page](https://supadata.ai/pricing) lists a free tier with **100 credits per month**, no credit card required. Unused credits do not roll over. Supadata pricing can change, so check the current page before relying on these numbers.
+Current as of August 16, 2026, the [Supadata pricing page](https://supadata.ai/pricing) lists a free tier with **100 credits per month**, no credit card required. Unused credits do not roll over. Supadata pricing can change, so check the current page before relying on these numbers.
 
 The [Supadata transcript documentation](https://docs.supadata.ai/get-transcript) describes the transcript request modes and credit behavior:
 
 - A native transcript request uses **1 credit**, regardless of video duration.
-- A generated transcript costs **2 credits per video minute**. LingoLens does not use this path because it forces `mode=native`.
+- A generated transcript costs **2 credits per video minute**. LingoLens shows an estimate and requires confirmation before using this path.
 - An unavailable native lookup returned as HTTP `206` still uses **1 credit**.
 
-With the current native-only behavior, the free tier can cover roughly 100 transcript lookups per month when each request succeeds once. Retries and unavailable-caption lookups also consume credits, so actual successful-video coverage can be lower.
+Direct YouTube caption reads use no Supadata credits. At the documented generation rate, 100 credits cover roughly 50 generated video minutes; actual billing remains controlled by Supadata.
 
 DeepSeek usage is separate from Supadata. DeepSeek may apply its own free quota, rate limits, or charges. LingoLens does not collect payments or resell access. Set spending limits and monitor both accounts. The estimate below explains the current DeepSeek translation cost.
 
@@ -206,10 +215,11 @@ If you want another AI provider or model, first open the exact LingoLens project
 
 LingoLens makes provider requests directly from the extension:
 
-1. It sends a canonical YouTube watch URL to Supadata to request the native transcript.
-2. It sends the transcript and relevant video metadata to DeepSeek when you request AI features.
-3. Focused features send only the content they need, such as selected text with context or small transcript batches for translation.
-4. It stores keys, settings, notes, and recent cache entries locally in Chrome.
+1. It requests the selected English caption track's timed text directly from YouTube.
+2. Only after YouTube captions fail and you confirm the displayed estimate, it sends the canonical watch URL to Supadata for AI transcription.
+3. It sends the transcript and relevant video metadata to DeepSeek when you request AI features.
+4. Focused features send only the content they need, such as selected text with context or small transcript batches for translation.
+5. It stores keys, settings, notes, and recent cache entries locally in Chrome.
 
 There is no LingoLens account system, advertising, analytics, or telemetry. Supadata and DeepSeek still receive data under their own terms and privacy policies. See [PRIVACY.md](PRIVACY.md) for details.
 
@@ -232,15 +242,16 @@ There is no LingoLens account system, advertising, analytics, or telemetry. Supa
 
 ### LingoLens asks for setup
 
-- Open **Settings** and save both a Supadata key and a DeepSeek key.
+- Open **Settings** and save a DeepSeek key. A Supadata key is optional and is needed only when you confirm AI transcript generation for a video without readable English YouTube captions.
 - This published version uses the fixed DeepSeek endpoint. Choose V4 Flash or V4 Pro in Settings.
 - If Settings says a legacy custom provider was removed, enter a DeepSeek key. The old AI key was cleared so it could not be reused with the wrong service.
 
 ### No transcript is found
 
-- Confirm the video is public and has native captions.
-- Check your Supadata key, remaining credits, rate limit, and account status.
-- Remember that unavailable native lookups and manual retries may still consume credits.
+- Confirm the video is public and has readable English manual or auto-generated captions.
+- When YouTube reports CC but direct caption requests fail, LingoLens may briefly open the native **Show transcript** panel, copy its timestamped text, and restore the prior panel state. The side panel shows a safe summary of which free source failed without exposing signed URLs or session data.
+- If no English captions exist, confirm Supadata AI generation or choose **Use Live AI instead**.
+- Check your Supadata key, remaining credits, rate limit, and account status before confirming generation. An accepted generation job may consume credits even if the side panel is later closed.
 
 LingoLens will not fall back to generated transcription.
 

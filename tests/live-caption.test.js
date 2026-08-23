@@ -174,7 +174,8 @@ test("extension wires tab capture, offscreen audio, overlay, and live controls",
   assert.match(read("live-caption-background.js"), /"live-caption-shared\.js", "page-caption\.js"/);
   assert.match(read("sidepanel.html"), /id="startLiveCaptionBtn"/);
   assert.match(read("live-caption-background.js"), /currentMs \+ 180_000/);
-  assert.match(read("live-caption-background.js"), /stream: true/);
+  assert.match(read("background.js"), /stream: true/);
+  assert.match(read("live-caption-background.js"), /requestAiCompletionStream/);
 });
 
 test("overlay toolbar overlaps the caption so hover has no dead zone", () => {

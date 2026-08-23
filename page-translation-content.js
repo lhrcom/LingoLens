@@ -6,6 +6,7 @@
 
   const Core = globalThis.YTD_PAGE_TRANSLATION_CORE;
   const MAX_SELECTION_CHARS = 12_000;
+  const pageInstanceId = `page-instance-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
   const CANDIDATE_SELECTOR =
     "h1,h2,h3,h4,h5,h6,p,li,blockquote,figcaption,dt,dd,td,th";
   const EXCLUDED_SELECTOR = [
@@ -17,7 +18,11 @@
 
   let sourceCounter = 0;
   let pagePort = null;
+  let pageGeneration = 0;
   let targetMap = new Map();
+  const generatedNodes = new Set();
+  let removalObserver = null;
+  let removalTimer = null;
   let selectionHost = null;
   let selectionShadow = null;
   let selectedText = "";
@@ -33,11 +38,27 @@
       completed: 0,
       success: 0,
       failed: 0,
+      rendered: 0,
       message: "Page translation has not started.",
     };
   }
 
-  const publicStatus = () => ({ ...pageState });
+  function renderedNodeCount() {
+    return document.querySelectorAll("[data-ytdpt-generated]").length;
+  }
+
+  const publicStatus = () => ({
+    ...pageState,
+    rendered: renderedNodeCount(),
+    pageInstanceId,
+  });
+
+  function stopRemovalGuard() {
+    removalObserver?.disconnect();
+    removalObserver = null;
+    clearTimeout(removalTimer);
+    removalTimer = null;
+  }
 
   function notifySidePanel(action, payload) {
     chrome.runtime.sendMessage({ action, ...payload }).catch(() => {});
@@ -293,7 +314,12 @@
   }
 
   function removeGeneratedFor(sourceId) {
-    generatedNodeFor(sourceId)?.remove();
+    document
+      .querySelectorAll(`[data-ytdpt-for="${CSS.escape(sourceId)}"]`)
+      .forEach((node) => {
+        generatedNodes.delete(node);
+        node.remove();
+      });
   }
 
   function renderTranslation(item, translation) {
@@ -304,6 +330,7 @@
     node.dataset.ytdptFor = item.sourceId;
     node.lang = "zh-CN";
     node.textContent = translation;
+    generatedNodes.add(node);
     insertGenerated(item.element, node);
   }
 
@@ -320,6 +347,7 @@
     button.textContent = "Retry";
     button.addEventListener("click", () => retryTarget(target));
     node.append(label, button);
+    generatedNodes.add(node);
     insertGenerated(item.element, node);
   }
 
@@ -363,6 +391,9 @@
         status: publicStatus(),
       };
     }
+    stopRemovalGuard();
+    pageGeneration += 1;
+    const generation = pageGeneration;
     const { segments, total, existing } = collectPageSegments();
     pageState = {
       status: segments.length ? "running" : "completed",
@@ -385,10 +416,12 @@
       const port = chrome.runtime.connect({ name: "ytd-page-translation" });
       pagePort = port;
       port.onMessage.addListener((message) => {
-        if (message.action === "ytdPageTranslationProgress") handleProgress(message);
+        if (message.action === "ytdPageTranslationProgress") {
+          handleProgress(message, generation);
+        }
       });
       port.onDisconnect.addListener(() => {
-        if (pagePort !== port) return;
+        if (pagePort !== port || generation !== pageGeneration) return;
         pagePort = null;
         if (pageState.status === "running") {
           pageState.status = "failed";
@@ -434,15 +467,81 @@
     return { ok: true, status: publicStatus() };
   }
 
-  function removePageTranslations() {
-    if (["running", "stopping"].includes(pageState.status)) cancelPageTranslation();
-    pagePort?.disconnect();
+  function sweepGeneratedNodes() {
+    let removed = 0;
+    for (const node of [...generatedNodes]) {
+      generatedNodes.delete(node);
+      if (!node?.isConnected) continue;
+      node.remove();
+      removed += 1;
+    }
+    document.querySelectorAll("[data-ytdpt-generated]").forEach((node) => {
+      generatedNodes.delete(node);
+      if (!node.isConnected) return;
+      node.remove();
+      removed += 1;
+    });
+    document.querySelectorAll("[data-ytdpt-source-id]").forEach((element) => {
+      delete element.dataset.ytdptSourceId;
+    });
+    return removed;
+  }
+
+  function startRemovalGuard() {
+    stopRemovalGuard();
+    const removeReinserted = (root) => {
+      if (!(root instanceof Element)) return;
+      if (root.matches("[data-ytdpt-generated]")) root.remove();
+      root
+        .querySelectorAll?.("[data-ytdpt-generated]")
+        .forEach((node) => node.remove());
+    };
+    removalObserver = new MutationObserver((records) => {
+      for (const record of records) {
+        record.addedNodes.forEach(removeReinserted);
+      }
+    });
+    removalObserver.observe(document.documentElement, {
+      childList: true,
+      subtree: true,
+    });
+    requestAnimationFrame(() => sweepGeneratedNodes());
+    setTimeout(() => sweepGeneratedNodes(), 120);
+    removalTimer = setTimeout(() => {
+      sweepGeneratedNodes();
+      stopRemovalGuard();
+    }, 1500);
+  }
+
+  async function removePageTranslations() {
+    const activeJobId = pageState.jobId;
+    const activePort = pagePort;
+    pageGeneration += 1;
     pagePort = null;
-    document.querySelectorAll("[data-ytdpt-generated]").forEach((node) => node.remove());
     targetMap.clear();
     pageState = createPageState();
+    if (activePort && activeJobId) {
+      try {
+        activePort.postMessage({
+          action: "ytdPageTranslationCancelJob",
+          jobId: activeJobId,
+        });
+      } catch (_error) {
+        // Disconnecting the port below also aborts its background jobs.
+      }
+    } else if (activeJobId) {
+      await chrome.runtime
+        .sendMessage({
+          action: "ytdPageTranslationCancelJob",
+          jobId: activeJobId,
+        })
+        .catch(() => {});
+    }
+    activePort?.disconnect();
+    const removedCount = sweepGeneratedNodes();
+    startRemovalGuard();
     notifyStatus();
-    return { ok: true, status: publicStatus() };
+    return { ok: true, removedCount, status: publicStatus() };
   }
 
   async function retryTarget(target) {
@@ -473,8 +572,14 @@
     notifyStatus();
   }
 
-  function handleProgress(message) {
-    if (!message || message.jobId !== pageState.jobId) return;
+  function handleProgress(message, generation = pageGeneration) {
+    if (
+      !message ||
+      generation !== pageGeneration ||
+      message.jobId !== pageState.jobId
+    ) {
+      return;
+    }
     if (message.fatalError) {
       pageState.status = "failed";
       pageState.message = message.fatalError.message || "Page translation failed.";
@@ -545,6 +650,17 @@
       sendResponse({ ok: true, status: publicStatus() });
       return false;
     }
+    if (
+      message.pageInstanceId &&
+      message.pageInstanceId !== pageInstanceId
+    ) {
+      sendResponse({
+        ok: false,
+        error: { message: "The page changed before this action could run." },
+        status: publicStatus(),
+      });
+      return false;
+    }
     if (message.action === "ytdPageTranslationStart") {
       startPageTranslation().then(sendResponse);
       return true;
@@ -554,8 +670,8 @@
       return true;
     }
     if (message.action === "ytdPageTranslationRemove") {
-      sendResponse(removePageTranslations());
-      return false;
+      removePageTranslations().then(sendResponse);
+      return true;
     }
     return false;
   });

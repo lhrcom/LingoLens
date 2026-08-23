@@ -18,7 +18,8 @@ Depending on the feature you use, LingoLens handles:
 - content you ask to translate;
 - notes you save;
 - Supadata, Deepgram, and DeepSeek configuration, including API keys;
-- global subtitle overlay size, width, and relative screen position preferences;
+- global subtitle overlay size, width, relative screen position, and temporary
+  on-page pagination state;
 - audio from the user-selected browser tab while live transcription is active;
 - live and prefetched bilingual caption sessions; and
 - cached transcript, digest, and translation results.
@@ -27,7 +28,7 @@ Depending on the feature you use, LingoLens handles:
 
 ### Supadata
 
-LingoLens sends the canonical YouTube video URL to `https://api.supadata.ai` with your Supadata API key. Supadata returns the transcript and timestamps. A Supadata key is required for transcript retrieval.
+LingoLens first reads the current video's English manual or auto-generated caption track directly from YouTube. Only when no readable English track is available, and after you confirm the displayed estimated credit cost, LingoLens sends the canonical video URL to `https://api.supadata.ai` with `mode=generate`. Pending job IDs and statuses are stored locally so checking can resume after reopening the side panel.
 
 ### DeepSeek
 
@@ -51,7 +52,7 @@ returns interim and final English transcripts. Capture stops when you click
 Stop, close or navigate the tab, or the media stream ends. The extension does
 not send video frames to Deepgram.
 
-Requests go directly from the extension to Supadata, Deepgram, or DeepSeek.
+Requests go directly from the extension to YouTube, Supadata, Deepgram, or DeepSeek.
 They are authenticated with the keys you supply. LingoLens's developer
 does not proxy or receive these requests.
 
@@ -66,6 +67,9 @@ LingoLens uses Chrome's local extension storage, not a LingoLens cloud service.
 - Recent transcript, digest, and per-segment translation cache entries are stored
   locally. The cache is limited to 20 videos, and entries older than 30 days are
   removed when the side panel opens.
+- Confirmed Supadata AI job IDs and statuses are stored by video so asynchronous
+  generation can resume after the side panel is reopened. A completed generated
+  transcript is written only to that video's cache, even if another video is open.
 - Up to 20 recent bilingual caption sessions are stored locally for history and
   SRT, VTT, or Markdown export.
 
@@ -90,17 +94,22 @@ LingoLens uses Chrome permissions for these purposes:
 - `storage`: store settings, keys, notes, and cached results locally.
 - `tabs`: identify and interact with the active web or YouTube tab.
 - `scripting`: coordinate the extension's YouTube page controls.
-- `activeTab`: inspect the selected page and inject the subtitle overlay only
+- `activeTab`: inspect the selected page, inject the subtitle overlay, and authorize Live AI capture only
   after the user opens or interacts with the extension.
 - `tabCapture`: capture audio from the user-selected tab after a user click.
 - `offscreen`: keep audio processing and the Deepgram connection alive while
   the side panel is closed.
 - YouTube host access: read the active video's URL and metadata and provide timestamp controls.
-- Supadata host access: retrieve transcripts.
+- Supadata host access: generate transcripts only after per-video confirmation and query saved asynchronous jobs.
+- YouTube host access: read existing English manual or auto-generated captions through timed-text, the Transcript API, or the native **Show transcript** panel before using a paid provider. When the native panel is needed, LingoLens may briefly open it, read its visible timestamped text, and restore the previous panel state. It does not store or log signed caption URLs, YouTube cookies, visitor identifiers, internal endpoint parameters, or YouTube's web API key.
 - DeepSeek host access: provide AI overviews, explanations, page and subtitle translation, and note polishing through the selected DeepSeek V4 model.
 - Deepgram host access: provide live English speech recognition through Nova-3.
 
 The generic content script observes only the current page's selection and readable text needed for user-requested translation. Selecting text only displays an on-page **译** button; it does not send the selection. LingoLens does not send browsing activity or page text unless you click **译** or explicitly start another applicable feature.
+
+Video candidate filtering and bilingual subtitle pagination happen locally in
+the active tab. Hidden or duplicate video elements and pagination measurements
+are not sent to an external service.
 
 ## No sale or advertising use
 

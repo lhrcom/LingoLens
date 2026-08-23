@@ -12,7 +12,8 @@ const YTD_OPTIONS = (() => {
         "Keys stay in this Chrome profile and are sent only to Supadata, Deepgram, and DeepSeek. This open-source extension has no developer server or analytics.",
       transcriptProvider: "Transcript provider",
       supadataApiKeyLabel: "Supadata API key",
-      supadataHelp: "Used to fetch timestamped YouTube subtitles. ",
+      supadataHelp:
+        "Optional. Used only after you approve AI transcript generation for a video with no readable English YouTube captions. ",
       supadataLink: "Create a Supadata account and key",
       supadataHelpSuffix:
         ". Supadata generates the key during onboarding.",
@@ -97,7 +98,8 @@ const YTD_OPTIONS = (() => {
         "密钥仅保存在当前 Chrome 个人资料中，只会发送给 Supadata、Deepgram 和 DeepSeek。本开源扩展没有开发者服务器，也不使用分析服务。",
       transcriptProvider: "字幕服务",
       supadataApiKeyLabel: "Supadata API 密钥",
-      supadataHelp: "用于获取带时间戳的 YouTube 字幕。",
+      supadataHelp:
+        "可选。仅当视频没有可读的 YouTube 英文字幕，且你确认使用 AI 生成字幕后才会使用。",
       supadataLink: "创建 Supadata 账号并获取密钥",
       supadataHelpSuffix: "。Supadata 会在引导流程中生成密钥。",
       speechProvider: "实时语音识别服务",

@@ -65,8 +65,7 @@ Output JSON (no markdown fences):
   ],
   "keyQuotes": [
     {"quote": "Exact quote from transcript", "timestamp": "2:30", "timestampSeconds": 150}
-  ],
-  "keyMoments": [0, 150, 300]
+  ]
 }
 
 CRITICAL:
