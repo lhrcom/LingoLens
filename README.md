@@ -39,12 +39,11 @@ Never paste an API key into an AI chat, source file, screenshot, or public messa
 ## Install and start using LingoLens
 
 1. Download the latest LingoLens ZIP from the repository's [Releases page](https://github.com/lhrcom/LingoLens/releases). If no packaged release is available, open the repository's **Code** menu, choose **Download ZIP**, and extract it.
-2. Move the extracted folder to a permanent location. Open it and locate the folder that directly contains `manifest.json`; this is the folder Chrome must load.
-3. In Chrome, open `chrome://extensions`, turn on **Developer mode**, click **Load unpacked**, and select that exact folder.
-4. Pin LingoLens from Chrome's Extensions menu, click its icon, and open **Settings** from the side panel.
-5. Enter your own DeepSeek API key. Add Supadata only if you want confirmed full-transcript generation for videos without English captions, and add Deepgram only if you want live transcription. Do not put API keys in GitHub files, issues, screenshots, or chat messages.
-6. To translate a normal web page, select English text and click the nearby **译** button, or open the side panel and choose **Translate page** for full-page bilingual translation.
-7. To study a YouTube video, open a watch page with captions, open the LingoLens side panel, and use the transcript, bilingual view, overview, explanations, notes, or live subtitles.
+2. In Chrome, open `chrome://extensions`, turn on **Developer mode**, click **Load unpacked**, and select that folder.
+3. Pin LingoLens from Chrome's Extensions menu, click its icon, and open **Settings** from the side panel.
+4. Enter your own DeepSeek API key. Add Supadata only if you want confirmed full-transcript generation for videos without English captions, and add Deepgram only if you want live transcription. Do not put API keys in GitHub files, issues, screenshots, or chat messages.
+5. To translate a normal web page, select English text and click the nearby **译** button, or open the side panel and choose **Translate page** for full-page bilingual translation.
+6. To study a YouTube video, open a watch page with captions, open the LingoLens side panel, and use the transcript, bilingual view, overview, explanations, notes, or live subtitles.
 
 LingoLens is loaded locally and does not update automatically. To install a newer version, download and extract it, replace the files in your permanent LingoLens folder, then click **Reload** on the LingoLens card at `chrome://extensions` and refresh any open pages. Keep the folder in place; moving or deleting it disables the unpacked extension until you load it again from its new location.
 
