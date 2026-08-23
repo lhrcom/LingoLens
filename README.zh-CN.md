@@ -38,13 +38,12 @@ LingoLens 是基于 zarazhangrui 的 [YouTube Digest](https://github.com/zarazha
 
 ## 安装并开始使用 LingoLens
 
-1. 从项目的 [Releases 页面](https://github.com/lhrcom/LingoLens/releases)下载最新版 LingoLens ZIP。如果暂时没有打包好的 Release，可以打开仓库的 **Code** 菜单，点击 **Download ZIP**，然后解压。
-2. 把解压后的文件夹移动到长期保留的位置。打开文件夹，找到直接包含 `manifest.json` 的那一层；Chrome 需要加载的就是这个文件夹。
-3. 在 Chrome 地址栏打开 `chrome://extensions`，开启“开发者模式”，点击“加载已解压的扩展程序”，然后选择上一步确定的文件夹。
-4. 在 Chrome 扩展菜单中固定 LingoLens，点击图标打开侧边栏，再从侧边栏打开 **Settings**。
-5. 填写你自己的 DeepSeek API Key。只有需要为无英文字幕的视频确认生成完整转录时才填写 Supadata；需要实时听写时再填写 Deepgram。不要把 API Key 写入 GitHub 文件、Issue、截图或聊天消息。
-6. 翻译普通网页时，选中英文并点击选区附近的 **译** 按钮；需要整页双语翻译时，打开侧边栏并点击 **Translate page**。
-7. 学习 YouTube 视频时，打开带字幕的视频页面和 LingoLens 侧边栏，即可使用字幕、双语对照、概览、讲解、笔记或实时字幕。
+1. 从项目的 [Releases 页面](https://github.com/lhrcom/LingoLens/releases)下载最新版 LingoLens ZIP。如果暂时没有打包好的 Release，可以打开仓库的 **Code** 菜单，点击 **Download ZIP**，然后解压.
+2. 在 Chrome 地址栏打开 `chrome://extensions`，开启“开发者模式”，点击“加载已解压的扩展程序”，然后选择下载的文件夹。
+3. 在 Chrome 扩展菜单中固定 LingoLens，点击图标打开侧边栏，再从侧边栏打开 **Settings**。
+4. 填写你自己的 DeepSeek API Key。只有需要为无英文字幕的视频确认生成完整转录时才填写 Supadata；需要实时听写时再填写 Deepgram。不要把 API Key 写入 GitHub 文件、Issue、截图或聊天消息。
+5. 翻译普通网页时，选中英文并点击选区附近的 **译** 按钮；需要整页双语翻译时，打开侧边栏并点击 **Translate page**。
+6. 学习 YouTube 视频时，打开带字幕的视频页面和 LingoLens 侧边栏，即可使用字幕、双语对照、概览、讲解、笔记或实时字幕。
 
 LingoLens 是本地加载的扩展，不会自动更新。安装新版时，请下载并解压新版，用新版文件替换长期保留的 LingoLens 文件夹内容，然后在 `chrome://extensions` 的 LingoLens 卡片上点击“重新加载”，并刷新已经打开的页面。请不要移动或删除这个文件夹，否则扩展会失效，需要从新位置重新加载。
 
