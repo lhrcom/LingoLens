@@ -185,3 +185,12 @@ test("overlay toolbar overlaps the caption so hover has no dead zone", () => {
   assert.match(source, /opacity: 1; pointer-events: auto; transform: translateY\(0\)/);
   assert.doesNotMatch(source, /top: -36px/);
 });
+
+test("overlay uses transparent high-contrast bilingual subtitle styling", () => {
+  const source = read("page-caption.js");
+  assert.match(source, /border-radius: 10px; background: transparent;/);
+  assert.match(source, /\.english \{ color: #FFD54F;/);
+  assert.match(source, /\.chinese \{ margin-top: 3px; color: #FFFFFF;/);
+  assert.match(source, /-webkit-text-stroke: 2px #000;/);
+  assert.match(source, /text-shadow: 0 2px 4px rgba\(0, 0, 0, \.9\);/);
+});
