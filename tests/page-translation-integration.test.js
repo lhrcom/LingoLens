@@ -152,11 +152,11 @@ test("settings and release package expose one key with Flash or Pro", () => {
   const settings = require("../settings.js");
   assert.match(html, /id="aiApiKey"/);
   assert.match(html, /id="aiModel"/);
-  assert.match(html, /value="deepseek-v4-flash"/);
+  assert.match(html, /value="deepseek-flash"/);
   assert.match(html, /value="deepseek-v4-pro"/);
   assert.match(html, /id="testDeepseekBtn"/);
   assert.deepEqual([...settings.AI_MODELS], [
-    "deepseek-v4-flash",
+    "deepseek-flash",
     "deepseek-v4-pro",
   ]);
   const checkScript = read("scripts/check-release.sh");

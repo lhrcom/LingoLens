@@ -45,7 +45,7 @@ test("runtime and release files contain no source credential dependency", () => 
   const publicText = publicFiles.map(read).join("\n");
   assert.doesNotMatch(publicText, /sk-[A-Za-z0-9]{16,}/);
   assert.doesNotMatch(publicText, /config\.js/);
-  assert.equal(manifest.version, "1.3.6");
+  assert.equal(manifest.version, "1.3.7");
 });
 
 test("published prompt files expose the runtime sections", () => {

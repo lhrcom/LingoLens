@@ -30,7 +30,7 @@ const YTD_OPTIONS = (() => {
       providerBadge: "Supported in this version",
       deepseekApiKeyLabel: "DeepSeek API key",
       deepseekHelp:
-        "LingoLens uses your selected DeepSeek V4 model for web translation, overviews, explanations, subtitle translation, and note polishing. ",
+        "LingoLens uses your selected DeepSeek model for web translation, overviews, explanations, subtitle translation, and note polishing. ",
       deepseekLink: "Create a DeepSeek API key",
       deepseekHelpSuffix: ".",
       aiModelLabel: "DeepSeek model",
@@ -115,7 +115,7 @@ const YTD_OPTIONS = (() => {
       providerBadge: "当前版本支持",
       deepseekApiKeyLabel: "DeepSeek API 密钥",
       deepseekHelp:
-        "LingoLens 使用你选择的 DeepSeek V4 模型翻译网页和字幕，并生成概览、解释与润色笔记。",
+        "LingoLens 使用你选择的 DeepSeek 模型翻译网页和字幕，并生成概览、解释与润色笔记。",
       deepseekLink: "创建 DeepSeek API 密钥",
       deepseekHelpSuffix: "。",
       aiModelLabel: "DeepSeek 模型",

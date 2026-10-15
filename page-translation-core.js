@@ -3,7 +3,7 @@
 
   const MAX_BATCH_ITEMS = 20;
   const MAX_BATCH_CHARS = 6000;
-  const MODELS = ["deepseek-v4-flash", "deepseek-v4-pro"];
+  const MODELS = ["deepseek-flash", "deepseek-v4-pro"];
   const EXCLUDED_TAGS = new Set([
     "SCRIPT", "STYLE", "NOSCRIPT", "SVG", "CANVAS", "PRE",
     "INPUT", "TEXTAREA", "SELECT", "OPTION", "BUTTON", "NAV", "FOOTER", "ASIDE"
@@ -109,8 +109,11 @@
     if (status === 429) {
       return { code: "RATE_LIMIT", retryable: true, message: "DeepSeek 请求过于频繁，请稍后重试" };
     }
+    if (status === 402) {
+      return { code: "INSUFFICIENT_BALANCE", retryable: false, message: "DeepSeek 账户余额不足，请在开放平台充值后重试" };
+    }
     if (status >= 500) {
-      return { code: "SERVER", retryable: true, message: "DeepSeek 服务暂时不可用" };
+      return { code: "SERVER", retryable: true, message: "DeepSeek 服务暂时不可用，请稍后重试；若持续失败，请检查代理或 VPN，并查看 DeepSeek 服务状态" };
     }
     return { code: "API", retryable: false, message: `DeepSeek 请求失败（HTTP ${status}）` };
   }

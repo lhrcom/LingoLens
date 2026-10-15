@@ -1,5 +1,16 @@
 /** Pure request lifecycle and bounded response readers for AI providers. */
 var YTD_AI_PROVIDER = (() => {
+  // Retry-After can be delta-seconds or an HTTP date. Bound waits so a test
+  // cannot leave its UI disabled indefinitely on a bad gateway response.
+  function retryAfterMs(value, now = Date.now()) {
+    if (typeof value !== "string" || !value.trim()) return 0;
+    const seconds = Number(value);
+    const ms = Number.isFinite(seconds)
+      ? seconds * 1000
+      : Date.parse(value) - now;
+    return Number.isFinite(ms) ? Math.min(30_000, Math.max(0, ms)) : 0;
+  }
+
   function responseTooLarge(maxBytes) {
     const error = new Error(
       `DeepSeek response exceeded the ${Math.round(maxBytes / 1024 / 1024)} MiB limit.`,
@@ -136,7 +147,7 @@ var YTD_AI_PROVIDER = (() => {
     };
   }
 
-  return { createLifecycle, readJson, readSse, readText };
+  return { createLifecycle, readJson, readSse, readText, retryAfterMs };
 })();
 
 if (typeof module !== "undefined" && module.exports) {

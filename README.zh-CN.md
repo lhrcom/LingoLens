@@ -78,11 +78,11 @@ LingoLens 使用你自己的服务 Key：
 
 在侧边栏中打开 **Settings**。你也可以在 `chrome://extensions` 的 LingoLens 卡片中打开扩展选项。Key 只能粘贴到这些设置输入框中。不要把 Key 发送到 AI 对话、项目文件、截图或公开消息中。
 
-发布版本使用 DeepSeek，并允许选择 V4 Flash 或 V4 Pro：
+发布版本使用 DeepSeek，并允许选择 Flash 或 V4 Pro：
 
 ```text
 Base URL: https://api.deepseek.com
-Models: deepseek-v4-flash, deepseek-v4-pro
+Models: deepseek-flash, deepseek-v4-pro
 ```
 
 LingoLens 会让所有 DeepSeek 请求使用非思考模式，以获得更快、更稳定的交互。全部功能共用一个 DeepSeek Key，并使用设置中选择的 Flash 或 Pro 模型。如果想使用其他服务或模型系列，请在设置中复制安全的自定义 prompt，让编程 Agent 修改你自己的本地副本。不要把任何 API Key 放进 prompt 或对话。
@@ -142,7 +142,7 @@ Chrome 内部页面、受保护的 DRM 媒体，以及部分跨域全屏播放�
 - 原文、简体中文和双语对照字幕。
 - AI 概览、选中文本讲解、翻译和自动润色笔记。
 - 本地笔记，以及最近字幕、概览和翻译的本地缓存。
-- 发布版本的全部 AI 功能可使用 DeepSeek V4 Flash 或 V4 Pro。其他服务需要修改本地代码。
+- 发布版本的全部 AI 功能可使用 DeepSeek Flash 或 V4 Pro。其他服务需要修改本地代码。
 
 YouTube 摘要功能仍要求标准且可访问的视频页面以及原生字幕。实时字幕回退可处理
 许多直播和没有原生字幕的视频，但私密、受保护或受访问限制的媒体可能阻止音频
@@ -164,9 +164,9 @@ LingoLens 首先读取 YouTube 英文字幕。只有没有可读字幕时，才�
 
 DeepSeek 的额度与 Supadata 分开计算。DeepSeek 可能有自己的免费额度、限速或费用。LingoLens 不收款，也不转售 API 服务。建议为两个账号设置消费上限并定期查看用量。下方估算说明了当前 DeepSeek 翻译成本。
 
-## DeepSeek V4 Flash 翻译成本估算
+## 历史 DeepSeek V4 Flash 翻译成本估算
 
-截至 2026 年 8 月 10 日，DeepSeek 官方[价格页面](https://api-docs.deepseek.com/quick_start/pricing/)列出的每 100 万 token 价格是：
+以下为 2026 年 8 月 10 日的历史估算，不适用于当前 Flash 模型报价。估算前请查看官方最新价格。当时 DeepSeek 官方[价格页面](https://api-docs.deepseek.com/quick_start/pricing/)列出的每 100 万 token 价格是：
 
 - 缓存命中输入：**¥0.02**。
 - 缓存未命中输入：**¥1**。
@@ -230,7 +230,7 @@ LingoLens 没有账号系统、广告、分析统计或行为追踪。Supadata �
 ### LingoLens 提示需要设置
 
 - 打开 **Settings** 并保存 DeepSeek Key。Supadata Key 是可选的，只在视频没有可读的 YouTube 英文字幕、且你确认使用 AI 生成字幕时需要。
-- 发布版本固定使用 DeepSeek 接口，可在设置中选择 V4 Flash 或 V4 Pro。
+- 发布版本固定使用 DeepSeek 接口，可在设置中选择 Flash 或 V4 Pro。
 - 如果设置提示旧的自定义服务已移除，请重新填写 DeepSeek Key。旧 AI Key 已安全清除，避免被错误用于 DeepSeek。
 
 ### 找不到字幕
@@ -244,6 +244,10 @@ LingoLens 不会自动改用 AI 生成字幕。
 
 ### AI 请求失败
 
+- 连接错误现在会显示 HTTP 状态码。`500` 表示服务器故障，`502`/`504` 也可能涉及网关或代理，`503` 表示服务暂时不可用或繁忙。请稍后重试；持续失败时检查代理/VPN，并查看 [DeepSeek 服务状态](https://status.deepseek.com/)。插件无法修复服务端故障。
+- 翻译及连接测试对暂时性故障最多重试 3 次，采用指数退避，并遵守服务端 `Retry-After` 提示（每次等待最多 30 秒），不会自动切换模型。
+- `402` 表示 DeepSeek 账户余额不足，请在开放平台充值后再试。
+- Flash 已采用官方推荐名称 `deepseek-flash`。旧设置 `deepseek-v4-flash` 会自动规范化，保留全部密钥；官方仍兼容旧名，因此仅凭旧模型名不能认定 5xx 故障的原因。
 - `401` 或 `403` 通常表示 DeepSeek Key 或账号权限有问题。
 - `429` 通常表示达到了 DeepSeek 服务限速或消费上限。
 - 确认 Key 来自上方链接的 DeepSeek 开放平台账号，并且账号有可用额度。

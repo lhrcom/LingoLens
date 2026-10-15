@@ -77,5 +77,5 @@ test("HTTP 错误映射和退避策略符合重试约定", () => {
 
 test("未知模型回退到 Flash", () => {
   assert.equal(Core.safeModel("deepseek-v4-pro"), "deepseek-v4-pro");
-  assert.equal(Core.safeModel("unknown"), "deepseek-v4-flash");
+  assert.equal(Core.safeModel("unknown"), "deepseek-flash");
 });
