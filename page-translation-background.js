@@ -12,6 +12,7 @@ var YTD_PAGE_TRANSLATION_BACKGROUND = (() => {
       this.code = options.code || "UNKNOWN";
       this.status = options.status || 0;
       this.retryable = Boolean(options.retryable);
+      this.retryAfterMs = options.retryAfterMs || 0;
     }
   }
 
@@ -62,9 +63,10 @@ var YTD_PAGE_TRANSLATION_BACKGROUND = (() => {
     }
     if (error?.status) {
       const classified = Core.classifyHttpError(error.status);
-      return new PageTranslationError(classified.message, {
+      return new PageTranslationError(`${classified.message}（HTTP ${error.status}）`, {
         ...classified,
         status: error.status,
+        retryAfterMs: error.retryAfterMs,
       });
     }
     const timeoutCodes = new Set(["AI_IDLE_TIMEOUT", "AI_HARD_TIMEOUT"]);
@@ -88,9 +90,14 @@ var YTD_PAGE_TRANSLATION_BACKGROUND = (() => {
 
   function abortableDelay(ms, signal) {
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(resolve, ms);
+      const finish = () => {
+        signal?.removeEventListener("abort", abort);
+        resolve();
+      };
+      const timer = setTimeout(finish, ms);
       const abort = () => {
         clearTimeout(timer);
+        signal?.removeEventListener("abort", abort);
         reject(new PageTranslationError("Translation cancelled.", { code: "CANCELLED" }));
       };
       if (!signal) return;
@@ -99,8 +106,8 @@ var YTD_PAGE_TRANSLATION_BACKGROUND = (() => {
     });
   }
 
-  function createApi({ requestAiCompletion }) {
-    async function requestBatch(segments, signal) {
+  function createApi({ requestAiCompletion, delay = abortableDelay }) {
+    async function requestBatch(segments, signal, maxTokens = 8_192) {
       const systemPrompt = [
         "You are a professional English to Simplified Chinese translator.",
         "Translate only the English text in the input. Do not summarize or explain.",
@@ -115,7 +122,7 @@ var YTD_PAGE_TRANSLATION_BACKGROUND = (() => {
             { role: "system", content: systemPrompt },
             { role: "user", content: JSON.stringify({ segments }) },
           ],
-          maxTokens: 8_192,
+          maxTokens,
           temperature: 0.2,
           responseFormat: { type: "json_object" },
           signal,
@@ -133,24 +140,27 @@ var YTD_PAGE_TRANSLATION_BACKGROUND = (() => {
       }
     }
 
-    async function requestWithRetry(segments, signal) {
+    async function requestWithRetry(segments, signal, maxTokens) {
       let lastError;
       for (let attempt = 0; attempt <= MAX_RETRIES; attempt += 1) {
         try {
-          return await requestBatch(segments, signal);
+          if (signal?.aborted) {
+            throw new PageTranslationError("Translation cancelled.", { code: "CANCELLED" });
+          }
+          return await requestBatch(segments, signal, maxTokens);
         } catch (error) {
           lastError = error;
           if (signal?.aborted) {
             throw new PageTranslationError("Translation cancelled.", { code: "CANCELLED" });
           }
           if (!Core.isRetryableError(error) || attempt === MAX_RETRIES) throw error;
-          await abortableDelay(Core.retryDelay(attempt), signal);
+          await delay(Math.max(Core.retryDelay(attempt), error.retryAfterMs), signal);
         }
       }
       throw lastError;
     }
 
-    async function translateSelection(value, signal) {
+    async function translateSelection(value, signal, maxTokens) {
       const text = Core.normalizeText(value);
       if (!Core.hasEnglish(text)) {
         throw new PageTranslationError("Select text containing English.", {
@@ -163,7 +173,7 @@ var YTD_PAGE_TRANSLATION_BACKGROUND = (() => {
         });
       }
       const id = `selection-${Date.now()}`;
-      const result = await requestWithRetry([{ id, text }], signal);
+      const result = await requestWithRetry([{ id, text }], signal, maxTokens);
       const translation = result.translations.find((item) => item.id === id);
       if (!translation) {
         throw new PageTranslationError("DeepSeek did not return this translation.", {
@@ -282,7 +292,9 @@ var YTD_PAGE_TRANSLATION_BACKGROUND = (() => {
           const text = message.action === "ytdPageTranslationTestApi"
             ? "Hello, world!"
             : message.text;
-          translateSelection(text)
+          // A tiny real translation verifies the key, model and JSON support.
+          translateSelection(text, undefined,
+            message.action === "ytdPageTranslationTestApi" ? 256 : undefined)
             .then((translation) => sendResponse({ ok: true, translation }))
             .catch((error) => sendResponse({ ok: false, error: serializeError(error) }));
           return true;

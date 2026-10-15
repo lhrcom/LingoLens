@@ -78,11 +78,11 @@ See the [official DeepSeek API documentation](https://api-docs.deepseek.com/) fo
 
 Open **Settings** from the side panel. You can also open the LingoLens **Options** page from its card at `chrome://extensions` or by right-clicking its toolbar icon. Paste keys only into these Settings fields. Never paste a key into an AI chat, repository file, screenshot, or public message.
 
-The published version supports DeepSeek as its AI provider and lets you choose V4 Flash or V4 Pro:
+The published version supports DeepSeek as its AI provider and lets you choose Flash or V4 Pro:
 
 ```text
 Base URL: https://api.deepseek.com
-Models: deepseek-v4-flash, deepseek-v4-pro
+Models: deepseek-flash, deepseek-v4-pro
 ```
 
 LingoLens sends every DeepSeek request in non-thinking mode for responsive, predictable interactions. All features share the one DeepSeek key and the Flash or Pro model selected in Settings. To use another provider or model family, copy the safe customization prompt in Settings and give it to a coding agent for your local copy. Never add an API key to that prompt or chat.
@@ -151,7 +151,7 @@ side-panel history remains available when an overlay cannot be placed.
 - Original, Simplified Chinese, and aligned bilingual transcript views.
 - AI overviews, selected-text explanations, translation, and automatic note polishing.
 - Local notes and a local cache for recent transcript and digest results.
-- DeepSeek V4 Flash or V4 Pro for all published AI features. Other providers require a local code adaptation.
+- DeepSeek Flash or V4 Pro for all published AI features. Other providers require a local code adaptation.
 
 YouTube study features still require a standard accessible watch page and a
 complete transcript from YouTube captions or confirmed Supadata AI generation.
@@ -176,9 +176,9 @@ Direct YouTube caption reads use no Supadata credits. At the documented generati
 
 DeepSeek usage is separate from Supadata. DeepSeek may apply its own free quota, rate limits, or charges. LingoLens does not collect payments or resell access. Set spending limits and monitor both accounts. The estimate below explains the current DeepSeek translation cost.
 
-## DeepSeek V4 Flash translation cost estimate
+## Historical DeepSeek V4 Flash translation cost estimate
 
-Current as of August 10, 2026, DeepSeek lists the following prices per 1 million tokens on its official [pricing page](https://api-docs.deepseek.com/quick_start/pricing/):
+This historical estimate uses August 10, 2026 prices and is not a quote for the current Flash model. Check the current official pricing page before estimating costs. At that date, DeepSeek listed the following prices per 1 million tokens on its official [pricing page](https://api-docs.deepseek.com/quick_start/pricing/):
 
 - Cache-hit input: **$0.0028 USD**.
 - Cache-miss input: **$0.14 USD**.
@@ -242,7 +242,7 @@ There is no LingoLens account system, advertising, analytics, or telemetry. Supa
 ### LingoLens asks for setup
 
 - Open **Settings** and save a DeepSeek key. A Supadata key is optional and is needed only when you confirm AI transcript generation for a video without readable English YouTube captions.
-- This published version uses the fixed DeepSeek endpoint. Choose V4 Flash or V4 Pro in Settings.
+- This published version uses the fixed DeepSeek endpoint. Choose Flash or V4 Pro in Settings.
 - If Settings says a legacy custom provider was removed, enter a DeepSeek key. The old AI key was cleared so it could not be reused with the wrong service.
 
 ### No transcript is found
@@ -256,6 +256,10 @@ LingoLens will not fall back to generated transcription.
 
 ### AI requests fail
 
+- Connection errors now include the HTTP status. `500` indicates a server error; `502`/`504` can also involve a gateway or proxy; `503` indicates temporary unavailability or overload. Retry later and, if it persists, check your proxy/VPN and [DeepSeek service status](https://status.deepseek.com/). The extension cannot repair a provider outage.
+- Translation and connection tests retry transient failures up to three times, using exponential backoff and `Retry-After` when provided (capped at 30 seconds per wait). They do not switch models automatically.
+- A `402` means insufficient DeepSeek balance; top up your Platform account before retrying.
+- Flash now uses the official `deepseek-flash` model name. Saved `deepseek-v4-flash` settings are normalized automatically without clearing your keys; the old name remains an official compatibility alias, so it alone does not prove the cause of a 5xx failure.
 - A `401` or `403` usually means the DeepSeek key or account access is invalid.
 - A `429` usually means a DeepSeek rate or spending limit was reached.
 - Confirm the key was created in the DeepSeek Platform account linked above and that the account has available credit.

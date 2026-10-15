@@ -48,3 +48,5 @@ Examples include:
 - Remember that Chrome local extension storage is not an encrypted password vault.
 
 The release tooling uses an explicit file allowlist and scans public files for common credential patterns, but automated checks cannot detect every secret.
+
+DeepSeek translation errors shown by the page translator use fixed messages and HTTP status codes. Raw gateway HTML and provider error bodies are not copied into those messages or bug reports. Retry-After waits are capped at 30 seconds and do not change the chosen model or send keys to another host.

@@ -7,14 +7,14 @@
 var YTD_SETTINGS = (() => {
   const STORAGE_KEY = "ytd_settings";
   const AI_MODELS = Object.freeze([
-    "deepseek-v4-flash",
+    "deepseek-flash",
     "deepseek-v4-pro",
   ]);
   const DEFAULTS = Object.freeze({
     provider: "deepseek",
     aiApiKey: "",
     aiBaseUrl: "https://api.deepseek.com",
-    aiModel: "deepseek-v4-flash",
+    aiModel: "deepseek-flash",
     supadataApiKey: "",
     deepgramApiKey: "",
   });
@@ -24,6 +24,8 @@ var YTD_SETTINGS = (() => {
   }
 
   function safeAiModel(value) {
+    // Keep existing installations and their keys when adopting the canonical name.
+    if (value === "deepseek-v4-flash") return "deepseek-flash";
     return AI_MODELS.includes(value) ? value : DEFAULTS.aiModel;
   }
 

@@ -32,16 +32,17 @@ LingoLens first reads the current video's English manual or auto-generated capti
 
 ### DeepSeek
 
-The published version sends AI feature content to the DeepSeek V4 Flash or V4 Pro model you select at `https://api.deepseek.com`:
+The published version sends AI feature content to the DeepSeek Flash or V4 Pro model you select at `https://api.deepseek.com`:
 
 - transcript plus relevant title, channel, description, or duration for an overview;
 - selected text plus nearby transcript context for an explanation;
+- the fixed sentence “Hello, world!” when you explicitly test the connection in Settings;
 - a selected web-page passage or bounded batches of readable page text, including inline code identifiers but excluding preformatted code blocks, when you explicitly request translation;
 - small semantic transcript batches currently needed for progressive Chinese
   translation, or requested overview or explanation content;
 - nearby transcript context and video metadata when polishing a saved note.
 
-The endpoint is fixed. You provide one DeepSeek API key and choose `deepseek-v4-flash` or `deepseek-v4-pro` in Settings; that choice applies to every AI feature. To use another provider or model family, you must adapt your own local source copy and its permissions.
+The endpoint is fixed. You provide one DeepSeek API key and choose `deepseek-flash` or `deepseek-v4-pro` in Settings; that choice applies to every AI feature. To use another provider or model family, you must adapt your own local source copy and its permissions.
 
 ### Deepgram
 
@@ -102,7 +103,7 @@ LingoLens uses Chrome permissions for these purposes:
 - YouTube host access: read the active video's URL and metadata and provide timestamp controls.
 - Supadata host access: generate transcripts only after per-video confirmation and query saved asynchronous jobs.
 - YouTube host access: read existing English manual or auto-generated captions through timed-text, the Transcript API, or the native **Show transcript** panel before using a paid provider. When the native panel is needed, LingoLens may briefly open it, read its visible timestamped text, and restore the previous panel state. It does not store or log signed caption URLs, YouTube cookies, visitor identifiers, internal endpoint parameters, or YouTube's web API key.
-- DeepSeek host access: provide AI overviews, explanations, page and subtitle translation, and note polishing through the selected DeepSeek V4 model.
+- DeepSeek host access: provide AI overviews, explanations, page and subtitle translation, and note polishing through the selected DeepSeek model.
 - Deepgram host access: provide live English speech recognition through Nova-3.
 
 The generic content script observes only the current page's selection and readable text needed for user-requested translation. Selecting text only displays an on-page **译** button; it does not send the selection. LingoLens does not send browsing activity or page text unless you click **译** or explicitly start another applicable feature.

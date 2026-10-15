@@ -144,6 +144,9 @@ async function withAiProviderResponse({
           `DeepSeek error: ${response.status}`,
       );
       error.status = response.status;
+      error.retryAfterMs = YTD_AI_PROVIDER.retryAfterMs(
+        response.headers?.get?.("Retry-After"),
+      );
       error.code = response.status === 429
         ? "RATE_LIMITED"
         : response.status === 401
